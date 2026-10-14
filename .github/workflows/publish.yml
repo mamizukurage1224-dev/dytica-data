@@ -1,0 +1,99 @@
+# データを書き出して、GitHub Pages で公開する
+#
+# なぜ要るか:
+#   サイトは、3か所（Dytica のシート・ショウケースのシート・MECHATU-NE）をまとめたファイルを読む。
+#   見る人のスマホで毎回3か所を読んでまとめるより、ここで1回まとめて置いたほうが速い。
+#   点検を通ったデータだけを公開するので、シートの打ち間違いや化けが、そのまま利用者に見えない。
+#
+# いつ動くか:
+#   - 3時間おき（保険。シートの見張りが止まっても、半日以内には反映される）
+#   - 手で（Actions タブ →「データを書き出して公開する」→ Run workflow）
+#   - シートが変わったとき（シートの Apps Script が呼ぶ。まだ作っていない）
+#
+# 止まったとき:
+#   公開しないので、サイトは前のデータのまま。GitHub からメールが届く。
+#   理由は、実行のページの「Summary」に出る。
+#
+# ⚠️ 公開リポジトリの「時間で動く設定（schedule）」は、リポジトリに60日間なにも起きないと GitHub が止める。
+#    止まっても手やシートの見張りからは動くが、3時間おきの保険が無くなる。
+#    Actions タブに止まった知らせが出たら「Enable workflow」を押す（長期運用ガイドに書く）。
+
+name: データを書き出して公開する
+
+on:
+  schedule:
+    # 3時間おき。⚠️ 0分ちょうどは GitHub が混んで遅れやすいので、17分にずらしてある
+    - cron: '17 */3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 同時に2つ動かない（公開が前後して、古いデータで上書きされないように）
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.compare.outputs.changed }}
+      new_issues: ${{ steps.export.outputs.new_issues }}
+    env:
+      PAGES_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
+    steps:
+      # ⚠️ v4 は廃止予定の Node 20 向け。v5 は Node 24 向け（ショウケースと同じ）
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+
+      # 外の部品を使っていないので、npm install は要らない
+      - name: 書き出す
+        id: export
+        run: node export/build.js --out out
+
+      # 中身が前回と同じなら、公開しない（公開の履歴を無駄に増やさないため）
+      - name: 前回と中身が同じか比べる
+        id: compare
+        run: |
+          prev=$(curl -fsS "${PAGES_URL}meta.json?t=$(date +%s)" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{console.log(JSON.parse(s).contentHash||'')}catch(e){console.log('')}})" || true)
+          now=$(node -p "require('./out/meta.json').contentHash")
+          if [ -n "$prev" ] && [ "$prev" = "$now" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "中身は前回と同じなので、公開しません" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/upload-pages-artifact@v3
+        if: steps.compare.outputs.changed == 'true'
+        with:
+          path: out
+
+  deploy:
+    needs: build
+    if: needs.build.outputs.changed == 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
+
+  # 公開はしたが、前回には無かった「直したい項目」が出たときに、わざと失敗にして GitHub からメールを届ける。
+  # ⚠️ 直したい項目があるたびに失敗にしないこと。直すまで3時間おきにメールが届いてしまう。
+  notify:
+    needs: [build, deploy]
+    if: always() && needs.build.result == 'success' && needs.build.outputs.new_issues != '0'
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          echo "新しく「直したい項目」が ${{ needs.build.outputs.new_issues }} 件出ました（データは公開済み）。"
+          echo "どの行かは、この実行の build の Summary を見てください。"
+          exit 1
