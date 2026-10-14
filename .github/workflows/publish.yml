@@ -25,6 +25,11 @@ on:
     # 3時間おき。⚠️ 0分ちょうどは GitHub が混んで遅れやすいので、17分にずらしてある
     - cron: '17 */3 * * *'
   workflow_dispatch:
+    inputs:
+      force_wiki:
+        description: 'Wiki を今すぐ読み直す（ふだんは週1回）'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -56,6 +61,15 @@ jobs:
       - name: 書き出す
         id: export
         run: node export/build.js --out out
+
+      # 非公式 Wiki の動画一覧を読む（週1回。シートの Apps Script が差分を作るのに使う）。
+      # Apps Script（Google のサーバー）からは Wiki に断られるので、ここで読む。
+      # ⚠️ 読めなくても失敗にしない（データの公開まで止めない）。前回の中身を使い、読めなかったことを書いておく
+      - name: Wiki を読む
+        run: node export/wiki.js --out out
+        continue-on-error: true
+        env:
+          WIKI_FORCE: ${{ inputs.force_wiki }}
 
       # 中身が前回と同じなら、公開しない（公開の履歴を無駄に増やさないため）
       - name: 前回と中身が同じか比べる

@@ -44,6 +44,17 @@ node export/build.js --prev <フォルダ>   前回の公開の代わりに、�
 | `songs.json` | 4人の誰かが歌っている楽曲（歌ってみた・オリジナル） |
 | `report.json` | 点検の結果 |
 | `cache/hosts.json` | 他枠の持ち主の名前の控え（書き出しが次回に使う。サイトは使わない） |
+| `wiki/items.json` | 非公式 Wiki の「動画一覧」から読み取った動画（カゲツ・ロウ・ライ）。シートの Apps Script が差分を作るのに使う。サイトは使わない |
+
+### 非公式 Wiki の一覧（`export/wiki.js`）
+
+Wiki の前にいる Cloudflare が Google のサーバー（Apps Script）からの読み込みを断るので、ここで週1回読んでいます。
+続けて読むと断られる（429）ので、ページの間を8秒空けます。読めなかったページは前回の中身を使い、公開は止めません。
+
+```
+node export/wiki.js --out out            前回から6日以上たっていれば読み直す
+node export/wiki.js --out out --force    すぐ読み直す
+```
 
 **読むときは、先に `meta.json` を読み、各ファイルを `?v=<hash>` を付けて読んでください。**
 GitHub Pages は10分ほど手元に残るので、そのままだと古いファイルが出ることがあります。
