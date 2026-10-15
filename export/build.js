@@ -4,6 +4,7 @@
    - Dytica のシート（カゲツ・ロウ・ライの動画と他枠）
    - ショウケースのシート（ショウの動画）
    - MECHATU-NE ARCHIVE（楽曲）
+   - ディスコグラフィ（ショウケースのシートの「ディスコグラフィ」と、Dytica のシートの「ディスコグラフィ」）
    GitHub Actions が3時間おき（と、シートが変わったとき）に動かし、out/ を GitHub Pages で配る。
 
    点検の決まり（決めたこと.md の5章）：
@@ -13,7 +14,8 @@
 
    使い方:
      node export/build.js                  … 読んで out/ に書く
-     node export/build.js --from <フォルダ>  … 手元のファイルから読む（試すとき。dytica.csv / showcase.csv / songs.json）
+     node export/build.js --from <フォルダ>  … 手元のファイルから読む（試すとき。dytica.csv / showcase.csv / songs.json、
+                                             あれば showcaseDisco.csv / dyticaDisco.csv）
      node export/build.js --out <フォルダ>   … 書き出し先を変える
      node export/build.js --prev <フォルダ>  … 前回の公開の代わりに、手元の前回の out/ と比べる（試すとき）
    環境変数 PAGES_URL … 公開中のデータの場所。前回の件数・点検と比べるのと、他枠の持ち主の名前の控えを読むのに使う */
@@ -35,6 +37,11 @@ const SOURCES = {
   dytica:   { label: 'Dytica のシート（動画）',       id: '1Zh1XKg8B_j59gdfsCI9GVmPhKPFHjGb086dmbGjl5LY', gid: '1072447368' },
   showcase: { label: 'ショウケースのシート（動画情報）', id: '1S9GmmMs6Rt3hMra3RW8Ijveh61dJg7-iCwFubJPyzJU', gid: '772496731' },
   songs:    { label: 'MECHATU-NE ARCHIVE（楽曲）',     url: 'https://mechatu-ne-archive.netlify.app/music_data.json' },
+  /* ディスコグラフィ。ショウのぶんはショウケースのシートから読む（動画と同じ。決めたこと.md の2章）。
+     ほかの3人のぶんは Dytica のシートの「ディスコグラフィ」タブ（列は同じ＋「参加」）。
+     ⚠️ タブを作り直したら gid も変わる（シートの URL の #gid= のあとの数字）。空なら読まない */
+  showcaseDisco: { label: 'ショウケースのシート（ディスコグラフィ）', id: '1S9GmmMs6Rt3hMra3RW8Ijveh61dJg7-iCwFubJPyzJU', gid: '83070678' },
+  dyticaDisco:   { label: 'Dytica のシート（ディスコグラフィ）',     id: '1Zh1XKg8B_j59gdfsCI9GVmPhKPFHjGb086dmbGjl5LY', gid: '1783567461' },   // 2026-10-15 に持ち主が作ったタブ
 };
 
 /* 4人。key はファイル名と URL に使う。色は決めたこと.md の7章。
@@ -76,6 +83,7 @@ async function main() {
   const dy = parseDytica(dyticaRows);
   const sc = parseShowcase(showcaseRows);
   if (report.errors.length) return finish(null);
+  const discography = await buildDiscography(previous);
 
   // ── まとめる ──
   const songs = buildSongs(songsData);
@@ -85,9 +93,10 @@ async function main() {
   const groups = groupSameCollab(videos);
 
   // ── 件数が大きく減っていないか ──
-  const counts = { videos: videos.length, songs: songs.length };
+  const counts = { videos: videos.length, songs: songs.length, discography: discography.length };
   if (previous.meta && previous.meta.counts) {
-    Object.keys(counts).forEach(k => {
+    // ⚠️ ディスコグラフィは件数で止めない（20件ほどしかなく、2件消しただけで9割を切る）
+    ['videos', 'songs'].forEach(k => {
       const before = previous.meta.counts[k] || 0;
       if (before && counts[k] < before * MIN_RATIO) {
         fatal(k + ' の件数が前回の ' + before + ' 件から ' + counts[k] + ' 件に減りました（9割を切ったので公開しません）。' +
@@ -97,7 +106,7 @@ async function main() {
   }
   if (report.errors.length) return finish(null);
 
-  finish({ videos, songs, groups, counts });
+  finish({ videos, songs, groups, counts, discography });
 }
 
 // ───────────────────────── 読む ─────────────────────────
@@ -117,6 +126,23 @@ async function readSheet(key) {
   }
 }
 
+/* 止めずに読む（ディスコグラフィのような、無くてもサイトが成り立つもの用）。読めなければ null */
+async function readSheetSoft(key) {
+  const src = SOURCES[key];
+  if (FROM) {
+    const f = path.join(FROM, key + '.csv');
+    return fs.existsSync(f) ? parseCSV(fs.readFileSync(f, 'utf8')) : null;
+  }
+  if (!src.gid) return null;
+  try {
+    const rows = parseCSV(await fetchText('https://docs.google.com/spreadsheets/d/' + src.id + '/export?format=csv&gid=' + src.gid));
+    return rows.length ? rows : null;
+  } catch (e) {
+    warn(src.label + ' が読めませんでした（' + e.message + '）。前回の公開のものを使いました');
+    return null;
+  }
+}
+
 async function readJson(key) {
   const src = SOURCES[key];
   try {
@@ -129,17 +155,18 @@ async function readJson(key) {
 
 // 公開中の meta.json（前回の件数）・report.json（前回の点検）・他枠の持ち主の名前の控え。無くても止めない（初回は無い）
 async function readPrevious() {
-  const prev = { meta: null, report: null, hosts: {} };
+  const prev = { meta: null, report: null, hosts: {}, discography: null };
   readPrevious.last = prev;
   if (args.prev) {   // 試すとき：前回の公開の代わりに、手元のフォルダ（前回の out/）を読む
     const read = f => { try { return JSON.parse(fs.readFileSync(path.join(args.prev, f), 'utf8')); } catch (e) { return null; } };
-    prev.meta = read('meta.json'); prev.report = read('report.json'); prev.hosts = read('cache/hosts.json') || {};
+    prev.meta = read('meta.json'); prev.report = read('report.json'); prev.hosts = read('cache/hosts.json') || {}; prev.discography = read('discography.json');
     return prev;
   }
   if (!PAGES_URL || FROM) return prev;
   try { prev.meta = JSON.parse(await fetchText(PAGES_URL + 'meta.json?t=' + Date.now())); } catch (e) {}
   try { prev.report = JSON.parse(await fetchText(PAGES_URL + 'report.json?t=' + Date.now())); } catch (e) {}
   try { prev.hosts = JSON.parse(await fetchText(PAGES_URL + 'cache/hosts.json?t=' + Date.now())); } catch (e) {}
+  try { prev.discography = JSON.parse(await fetchText(PAGES_URL + 'discography.json?t=' + Date.now())); } catch (e) {}
   readPrevious.last = prev;
   return prev;
 }
@@ -414,6 +441,80 @@ function buildSongs(data) {
   return Object.values(byId).sort((a, b) => String(b.d || '').localeCompare(String(a.d || '')));
 }
 
+/* ディスコグラフィ（CD・Blu-ray・デジタル配信の作品）。
+   ショウケースのシートの行は、ショウが参加した作品。Dytica のシートの行は「参加」に書いた人の作品。
+   同じ作品が両方にあるとき（MECHATU-A の作品など）は、販売ページの URL で見分けて1件にし、参加した人を合わせる。
+   1つの作品の版違い（通常盤・初回限定盤・デジタルなど）は、シートでは別の行のまま。画面で1枚のカードにまとめる。
+   ⚠️ 読めなかったときは止めず、前回の公開のものを使う（ディスコグラフィが読めないだけで、動画の更新まで止めないため） */
+async function buildDiscography(previous) {
+  const scRows = await readSheetSoft('showcaseDisco');
+  const dyRows = await readSheetSoft('dyticaDisco');
+  if (!SOURCES.dyticaDisco.gid && !FROM) note('Dytica のシートの「ディスコグラフィ」タブは、まだ読んでいません（タブを作ったら export/build.js に gid を入れる）');
+  if (!scRows && !dyRows) return (previous && previous.discography) || [];
+  const byKey = {};
+  const order = [];
+  const add = (item) => {
+    const key = normUrl(item.b) || [item.t, item.k, item.d || item.y].join('|');
+    const had = byKey[key];
+    if (!had) { byKey[key] = item; order.push(key); return; }
+    had.m = sortMembers(Array.from(new Set(had.m.concat(item.m))));
+    ['v', 'n', 'd', 'y'].forEach(f => { if (!had[f] && item[f]) had[f] = item[f]; });
+  };
+  if (scRows) parseDisco(scRows, 'showcaseDisco').forEach(add);
+  if (dyRows) parseDisco(dyRows, 'dyticaDisco').forEach(add);
+  return order.map(k => byKey[k]).sort((a, b) => String(b.d || b.y).localeCompare(String(a.d || a.y)) || a.t.localeCompare(b.t));
+}
+
+/* ディスコグラフィのシートの1行 → 作品。見出しはぴったり同じ文字で探す（ショウケースの見出しに合わせた）。
+   ⚠️ 見出しが無いときも止めない（その表だけ読まずに知らせる） */
+function parseDisco(rows, key) {
+  const label = SOURCES[key].label;
+  const header = rows[0].map(h => String(h).trim());
+  const need = ['リリース日', 'タイトル', '種別', '販売ページ', '関連動画'].concat(key === 'dyticaDisco' ? ['参加'] : []);
+  const missing = need.filter(h => header.indexOf(h) === -1);
+  if (missing.length) { warn(label + ' に見出しが見つかりません：' + missing.join('、') + '。この表は読んでいません'); return []; }
+  const col = h => header.indexOf(h);
+  const out = [];
+  for (let i = 1; i < rows.length; i++) {
+    const r = rows[i];
+    const get = h => (col(h) < 0 ? '' : String(r[col(h)] == null ? '' : r[col(h)]).trim());
+    const title = get('タイトル');
+    if (!title) continue;
+    const rowNo = i + 1;
+    const item = { t: title, k: get('種別') || 'その他' };
+    const date = normDate(get('リリース日'));
+    if (date) item.d = date;
+    else {
+      const y = (get('年').match(/^\d{4}$/) || [])[0];
+      if (get('リリース日')) rowIssue(key, rowNo, 'リリース日「' + get('リリース日') + '」が読めません（2026/07/22 の形で、文字として入れてください）' + (y ? '。年だけで載せました' : '。この行は載せていません'));
+      if (!y) { if (!get('リリース日')) rowIssue(key, rowNo, 'リリース日も年も空なので、この行は載せていません'); continue; }
+      item.y = y;
+    }
+    const shop = get('販売ページ'); if (/^https?:\/\//.test(shop)) item.b = shop;
+    const vid = videoId(get('関連動画')); if (vid) item.v = vid;
+    const memo = get('備考'); if (memo) item.n = memo;
+    if (key === 'showcaseDisco') item.m = ['sho'];
+    else {
+      const ms = [];
+      splitList(get('参加')).forEach(n => {
+        const k = KEY_BY_SHORT[n] || KEY_BY_NAME[nameKey(n)];
+        if (k) { if (ms.indexOf(k) === -1) ms.push(k); }
+        else rowIssue(key, rowNo, '参加の「' + n + '」が4人の誰か分かりません（ショウ・カゲツ・ロウ・ライ のどれか）。外しました');
+      });
+      if (!ms.length) { rowIssue(key, rowNo, '参加が空なので、この行は載せていません'); continue; }
+      item.m = sortMembers(ms);
+    }
+    out.push(item);
+  }
+  return out;
+}
+
+// 販売ページの URL を比べるときの形（?lang=ja や末尾の / の違いを同じにする）
+function normUrl(u) {
+  const m = String(u || '').trim().match(/^https?:\/\/([^\/?#]+)([^?#]*)/i);
+  return m ? m[1].toLowerCase() + m[2].replace(/\/$/, '') : '';
+}
+
 // ───────────────────────── 書き出す ─────────────────────────
 
 /* out/ に書く。止めたとき（data が null）は report.json だけ書いて、失敗で終える（GitHub からメールが届く）。
@@ -451,6 +552,7 @@ function finish(data) {
   write('videos/dytica.json', vids.filter(v => v.m.length >= 2));
   write('videos/latest.json', vids.slice(0, 60));
   write('songs.json', data.songs);
+  write('discography.json', data.discography);
   write('cache/hosts.json', fillGuestHosts.cache || {});
 
   const meta = {
@@ -470,7 +572,7 @@ function finish(data) {
   fs.writeFileSync(path.join(OUT, 'report.json'), JSON.stringify(status, null, 1));
   fs.writeFileSync(path.join(OUT, '.nojekyll'), '');
   summary(status, meta);
-  console.log('書き出しました：動画 ' + data.counts.videos + ' 件・楽曲 ' + data.counts.songs + ' 件・同じ企画のまとまり ' + data.groups + ' 組' +
+  console.log('書き出しました：動画 ' + data.counts.videos + ' 件・楽曲 ' + data.counts.songs + ' 件・ディスコグラフィ ' + data.counts.discography + ' 件・同じ企画のまとまり ' + data.groups + ' 組' +
     '｜外した行・直したい項目 ' + report.rows.length + ' 件｜気になること ' + report.warnings.length + ' 件');
   if (process.env.GITHUB_OUTPUT) fs.appendFileSync(process.env.GITHUB_OUTPUT, 'content_hash=' + meta.contentHash + '\n');
 }
@@ -484,11 +586,12 @@ function summary(status, meta) {
   if (meta) {
     lines.push('| | 件数 | 大きさ |', '|---|---|---|');
     Object.keys(meta.files).forEach(f => lines.push('| ' + f + ' | | ' + Math.round(meta.files[f].bytes / 1024) + 'KB |'));
-    lines.push('', '動画 ' + meta.counts.videos + ' 件・楽曲 ' + meta.counts.songs + ' 件・同じ企画のまとまり ' + meta.sameCollabGroups + ' 組', '');
+    lines.push('', '動画 ' + meta.counts.videos + ' 件・楽曲 ' + meta.counts.songs + ' 件・ディスコグラフィ ' + meta.counts.discography + ' 件・同じ企画のまとまり ' + meta.sameCollabGroups + ' 組', '');
   }
   if (status.rows.length) {
     lines.push('### 外した行・直したい項目（' + status.rows.length + ' 件）', '', '| シート | 行 | 内容 |', '|---|---|---|');
-    status.rows.slice(0, 200).forEach(r => lines.push('| ' + (r.source === 'dytica' ? 'Dytica' : 'ショウケース') + ' | ' + r.row + ' | ' + r.message + ' |'));
+    const SHEET = { dytica: 'Dytica', showcase: 'ショウケース', dyticaDisco: 'Dytica（ディスコグラフィ）', showcaseDisco: 'ショウケース（ディスコグラフィ）' };
+    status.rows.slice(0, 200).forEach(r => lines.push('| ' + (SHEET[r.source] || r.source) + ' | ' + r.row + ' | ' + r.message + ' |'));
     lines.push('');
   }
   if (status.warnings.length) lines.push('### 気になること（' + status.warnings.length + ' 件）', '', ...status.warnings.slice(0, 200).map(w => '- ' + w), '');
