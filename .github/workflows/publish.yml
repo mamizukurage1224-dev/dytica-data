@@ -1,7 +1,8 @@
 # データを書き出して、GitHub Pages で公開する
 #
 # なぜ要るか:
-#   サイトは、3か所（Dytica のシート・ショウケースのシート・MECHATU-NE）をまとめたファイルを読む。
+#   サイトは、3か所（Dytica のシート・ショウケースのシート・MECHATU-NE）をまとめたファイルと、
+#   Holodex から取った「4人のこれからの配信」を読む。
 #   見る人のスマホで毎回3か所を読んでまとめるより、ここで1回まとめて置いたほうが速い。
 #   点検を通ったデータだけを公開するので、シートの打ち間違いや化けが、そのまま利用者に見えない。
 #
@@ -70,6 +71,15 @@ jobs:
         continue-on-error: true
         env:
           WIKI_FORCE: ${{ inputs.force_wiki }}
+
+      # 4人のこれからの配信（待機所・配信中）を Holodex から取る。キーは Settings → Secrets and variables → Actions の HOLODEX_API_KEY。
+      # ⚠️ キーを run の中で echo しないこと（公開リポジトリなので、実行の記録はだれでも見られる。GitHub が伏せ字にはするが頼らない）。
+      # ⚠️ 読めなくても失敗にしない（データの公開まで止めない）。前回の一覧から、まだ来ていない予定だけを残す
+      - name: これからの配信を取る
+        run: node export/upcoming.js --out out
+        continue-on-error: true
+        env:
+          HOLODEX_API_KEY: ${{ secrets.HOLODEX_API_KEY }}
 
       # 中身が前回と同じなら、公開しない（公開の履歴を無駄に増やさないため）
       - name: 前回と中身が同じか比べる

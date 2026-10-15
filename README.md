@@ -45,6 +45,7 @@ node export/build.js --prev <フォルダ>   前回の公開の代わりに、�
 | `report.json` | 点検の結果 |
 | `cache/hosts.json` | 他枠の持ち主の名前の控え（書き出しが次回に使う。サイトは使わない） |
 | `wiki/items.json` | 非公式 Wiki の「動画一覧」から読み取った動画（カゲツ・ロウ・ライ）。シートの Apps Script が差分を作るのに使う。サイトは使わない |
+| `upcoming.json` | 4人のこれからの配信（待機所・配信中）。[Holodex](https://holodex.net/) から取る |
 
 ### 非公式 Wiki の一覧（`export/wiki.js`）
 
@@ -55,6 +56,19 @@ Wiki の前にいる Cloudflare が Google のサーバー（Apps Script）か�
 node export/wiki.js --out out            前回から6日以上たっていれば読み直す
 node export/wiki.js --out out --force    すぐ読み直す
 ```
+
+### これからの配信（`export/upcoming.js`）
+
+Holodex に、4人のチャンネルと「4人の名前が入っているほかの人の配信」の予定をまとめて問い合わせます（1回）。
+キーは GitHub の Secrets（`HOLODEX_API_KEY`）に置いています。読めなかったときは前回の一覧を残し、公開は止めません。
+
+```
+HOLODEX_API_KEY=… node export/upcoming.js --out out   Holodex から取る
+node export/upcoming.js --out out --from <ファイル>     手元に控えた Holodex の返事から作る（試すとき）
+```
+
+載せないもの：フリーチャットの枠、30日より先の予定、予定の時刻を6時間過ぎても始まっていない枠、
+X の告知などから作られた予定（YouTube の動画IDが無いもの）。
 
 **読むときは、先に `meta.json` を読み、各ファイルを `?v=<hash>` を付けて読んでください。**
 GitHub Pages は10分ほど手元に残るので、そのままだと古いファイルが出ることがあります。
@@ -94,6 +108,22 @@ GitHub Pages は10分ほど手元に残るので、そのままだと古いフ�
 | `v` | 歌唱（表示用の文字。4人以外も含む） |
 | `k` | `cover`（歌ってみた）／`original`（オリジナル） |
 | `b` | 購入・配信のページ |
+
+### これからの配信（`upcoming.json`）
+
+`{ "items": [...] }` の形で、`items` は始まる順に並んでいます。読めなかったときは `error` に理由が入ります（`items` は前回の残り）。
+
+| 項目 | 意味 | 例 |
+|---|---|---|
+| `i` | YouTube の動画ID | |
+| `t` | タイトル | |
+| `s` | 始まる時刻（配信中なら始まった時刻）。世界時の ISO 形式なので、日本時間に直して出す | `"2026-10-18T09:00:00.000Z"` |
+| `live` | 書き出したときに配信中なら `1` | |
+| `h` / `o` | 枠の持ち主（4人のときは `h` にキー、ほかの人は `o` に名前） | `"にじさんじ"` |
+| `m` | 出ている4人 | `["sho","kagetsu","rou","rai"]` |
+| `c` | 一緒に出ている4人以外の人 | |
+
+⚠️ 3時間おきの書き出しなので、`live` や一覧は最大3時間ほど古いことがあります。始まる時刻を過ぎたものは、見る側で「予定の時刻を過ぎました」などと添えてください。
 
 ### 4人の色（`meta.json` の `members`）
 
