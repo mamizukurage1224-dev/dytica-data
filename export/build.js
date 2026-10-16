@@ -18,7 +18,9 @@
                                              あれば showcaseDisco.csv / dyticaDisco.csv）
      node export/build.js --out <フォルダ>   … 書き出し先を変える
      node export/build.js --prev <フォルダ>  … 前回の公開の代わりに、手元の前回の out/ と比べる（試すとき）
-   環境変数 PAGES_URL … 公開中のデータの場所。前回の件数・点検と比べるのと、他枠の持ち主の名前の控えを読むのに使う */
+   環境変数 PAGES_URL … 公開中のデータの場所。前回の件数・点検と比べるのと、他枠の持ち主の名前の控えを読むのに使う
+   環境変数 HOLODEX_API_KEY … ショウの配信の開始時刻を Holodex から補うのに使う（無ければ前回の控えだけで補う）。⚠️ 表示しないこと
+   環境変数 HOLODEX_FULL … true なら Holodex の控えを全部取り直す（ふだんは週1回） */
 'use strict';
 const fs = require('fs');
 const path = require('path');
@@ -90,6 +92,8 @@ async function main() {
   const songIds = new Set(songs.map(s => s.i));
   const videos = mergeVideos(dy, sc, songIds);
   await fillGuestHosts(videos, previous);
+  // ⚠️ 同じ企画のまとめ（開始時刻と長さで重なりを見る）より前に補うこと
+  await fillShoStarts(videos, previous);
   const groups = groupSameCollab(videos);
 
   // ── 件数が大きく減っていないか ──
@@ -155,11 +159,11 @@ async function readJson(key) {
 
 // 公開中の meta.json（前回の件数）・report.json（前回の点検）・他枠の持ち主の名前の控え。無くても止めない（初回は無い）
 async function readPrevious() {
-  const prev = { meta: null, report: null, hosts: {}, discography: null };
+  const prev = { meta: null, report: null, hosts: {}, discography: null, holodex: null };
   readPrevious.last = prev;
   if (args.prev) {   // 試すとき：前回の公開の代わりに、手元のフォルダ（前回の out/）を読む
     const read = f => { try { return JSON.parse(fs.readFileSync(path.join(args.prev, f), 'utf8')); } catch (e) { return null; } };
-    prev.meta = read('meta.json'); prev.report = read('report.json'); prev.hosts = read('cache/hosts.json') || {}; prev.discography = read('discography.json');
+    prev.meta = read('meta.json'); prev.report = read('report.json'); prev.hosts = read('cache/hosts.json') || {}; prev.discography = read('discography.json'); prev.holodex = read('cache/holodex-sho.json');
     return prev;
   }
   if (!PAGES_URL || FROM) return prev;
@@ -167,6 +171,7 @@ async function readPrevious() {
   try { prev.report = JSON.parse(await fetchText(PAGES_URL + 'report.json?t=' + Date.now())); } catch (e) {}
   try { prev.hosts = JSON.parse(await fetchText(PAGES_URL + 'cache/hosts.json?t=' + Date.now())); } catch (e) {}
   try { prev.discography = JSON.parse(await fetchText(PAGES_URL + 'discography.json?t=' + Date.now())); } catch (e) {}
+  try { prev.holodex = JSON.parse(await fetchText(PAGES_URL + 'cache/holodex-sho.json?t=' + Date.now())); } catch (e) {}
   readPrevious.last = prev;
   return prev;
 }
@@ -379,6 +384,78 @@ async function fillGuestHosts(videos, previous) {
   fillGuestHosts.cache = cache;
 }
 
+/* ショウの配信の開始時刻（と、無ければ長さ）を Holodex から補う。
+   ショウのぶんはショウケースのシートから読むが、ショウケースには開始時刻の列が無い（2026-10-16 に持ち主が気づいた。
+   ショウが出ている配信1,308本のうち1,016本に時刻が無かった）。ほかの3人のぶんは、取り込みが開始時刻を入れている。
+   - ショウのチャンネルの動画（/videos）と、ほかの人の枠への出演（/collabs）を取る。include=live_info を付けること（付けないと start_actual が無い）
+   - 取った時刻は cache/holodex-sho.json に控え、次からは新しい2ページ（100本）ずつだけ取る。週1回は全部取り直す（約50回の問い合わせ）
+   - ⚠️ シートの日付と Holodex の開始日（日本時間）が違うものには入れない。日付ごと食い違っている可能性があるため（知らせるだけ）
+     手元の控えで確かめた数：時刻の無い1,016本のうち Holodex にあるもの1,006本、日付が合うもの1,001本、違うもの4本
+   - ⚠️ Holodex が読めなくても止めない。前回の控えだけで補う */
+const HOLODEX_BASE = 'https://holodex.net/api/v2';
+const HOLODEX_REFRESH_DAYS = 7;
+async function fillShoStarts(videos, previous) {
+  const prevCache = (previous && previous.holodex) || {};
+  const cache = { fullAt: prevCache.fullAt || '', items: Object.assign({}, prevCache.items || {}) };   // 動画ID → [開始の秒（世界時）, 長さの秒]
+  const key = (process.env.HOLODEX_API_KEY || '').trim();
+  if (key) {
+    const full = !cache.fullAt || Date.now() - Date.parse(cache.fullAt) > HOLODEX_REFRESH_DAYS * 86400e3 || process.env.HOLODEX_FULL === 'true';
+    try {
+      for (const kind of ['videos', 'collabs']) {
+        const list = await holodexPages('/channels/' + MEMBERS[0].channelId + '/' + kind, full ? 80 : 2, key);
+        list.forEach(h => {
+          const t = Date.parse(h.start_actual || '');
+          if (!isNaN(t)) cache.items[h.id] = [Math.round(t / 1000), h.duration || 0];
+        });
+      }
+      if (full) cache.fullAt = new Date().toISOString();
+    } catch (e) {
+      note('Holodex が読めなかったので、前回の控えだけでショウの配信の開始時刻を補いました（' + e.message + '）');
+    }
+  } else if (!FROM) {
+    note('Holodex のキーが無いので、前回の控えだけでショウの配信の開始時刻を補いました');
+  }
+  let filled = 0;
+  const mismatch = [];
+  videos.forEach(v => {
+    if (v.s || v.k !== 'L' || v.m.indexOf('sho') === -1) return;
+    const h = cache.items[v.i];
+    if (!h || !h[0]) return;
+    const jst = new Date(h[0] * 1000 + 9 * 3600e3).toISOString();
+    if (jst.slice(0, 10) !== v.d) { mismatch.push(v.i + '（シート ' + v.d + '／Holodex ' + jst.slice(0, 10) + ' ' + jst.slice(11, 16) + '）'); return; }
+    v.s = jst.slice(11, 16);
+    if (!v.l && h[1]) v.l = h[1];
+    filled++;
+  });
+  if (mismatch.length) note('ショウの配信のうち、シートの日付と Holodex の開始日が違うため、開始時刻を入れなかったもの ' + mismatch.length + ' 本：' + mismatch.join('、'));
+  console.log('ショウの配信の開始時刻を Holodex から補いました：' + filled + ' 本（控え ' + Object.keys(cache.items).length + ' 本）');
+  fillShoStarts.cache = cache;
+}
+
+/* Holodex の一覧を、新しい順に maxPages ページ（1ページ50件）まで取る。
+   ⚠️ キーはヘッダーで渡す（URL に入れない。公開リポジトリなので、実行の記録はだれでも見られる） */
+async function holodexPages(apiPath, maxPages, key) {
+  const out = [];
+  for (let page = 0; page < maxPages; page++) {
+    const url = HOLODEX_BASE + apiPath + '?limit=50&offset=' + page * 50 + '&include=live_info&paginated=1';
+    let body, last;
+    for (let attempt = 0; attempt < 3 && !body; attempt++) {
+      try {
+        const res = await fetch(url, { headers: { 'X-APIKEY': key } });
+        if (res.ok) body = await res.json();
+        else { last = new Error('HTTP ' + res.status); if (res.status < 500 && res.status !== 429) break; }
+      } catch (e) { last = e; }
+      if (!body) await new Promise(r => setTimeout(r, 3000 * (attempt + 1)));
+    }
+    if (!body) throw last;
+    const items = Array.isArray(body) ? body : (body.items || []);
+    out.push(...items);
+    if (items.length < 50 || (body.total && (page + 1) * 50 >= Number(body.total))) break;
+    await new Promise(r => setTimeout(r, 300));   // 続けて問い合わせすぎないように
+  }
+  return out;
+}
+
 /* 4人がそれぞれの枠で同じコラボを配信したとき、同じ企画として印（p＝代表の動画ID）を付ける。
    一覧で4回並ばないよう、画面側で1件にまとめるのに使う（引き継ぎ書の「人数ぶん増えると一覧が埋まる」）。
    決まり：どちらも Dytica の誰かの枠の配信で、枠の持ち主が違い、お互いの出演に相手の枠の持ち主が入っていて、
@@ -554,6 +631,7 @@ function finish(data) {
   write('songs.json', data.songs);
   write('discography.json', data.discography);
   write('cache/hosts.json', fillGuestHosts.cache || {});
+  write('cache/holodex-sho.json', fillShoStarts.cache || { fullAt: '', items: {} });
 
   const meta = {
     generatedAt: now,

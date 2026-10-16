@@ -31,6 +31,10 @@ on:
         description: 'Wiki を今すぐ読み直す（ふだんは週1回）'
         type: boolean
         default: false
+      holodex_full:
+        description: 'ショウの配信の開始時刻を、Holodex から全部取り直す（ふだんは週1回）'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -59,9 +63,14 @@ jobs:
           node-version: '24'
 
       # 外の部品を使っていないので、npm install は要らない
+      # ショウの配信の開始時刻を Holodex から補うので、ここにもキーを渡す（ショウケースのシートには開始時刻の列が無い）。
+      # ⚠️ キーを echo しないこと。読めなくても書き出しは止まらない（前回の控えで補う）
       - name: 書き出す
         id: export
         run: node export/build.js --out out
+        env:
+          HOLODEX_API_KEY: ${{ secrets.HOLODEX_API_KEY }}
+          HOLODEX_FULL: ${{ inputs.holodex_full }}
 
       # 非公式 Wiki の動画一覧を読む（週1回。シートの Apps Script が差分を作るのに使う）。
       # Apps Script（Google のサーバー）からは Wiki に断られるので、ここで読む。
