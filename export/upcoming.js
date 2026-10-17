@@ -154,7 +154,12 @@ function writeSummary() {
   if (process.env.GITHUB_STEP_SUMMARY && summary.length) fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, '\n### これからの配信（Holodex）\n\n' + summary.map(s => '- ' + s).join('\n') + '\n');
 }
 
-// 「叢雲カゲツ / Murakumo Kagetsu【にじさんじ】」→「叢雲カゲツ」（export/build.js と同じ）
+/* 「叢雲カゲツ / Murakumo Kagetsu【にじさんじ】」→「叢雲カゲツ」（export/build.js と同じ）。
+   「Kazaki Ch. ‐ 森中花咲 ‐」のように、名前を ‐ で挟んだチャンネル名は、挟まれた名前だけにする
+   （2026-10-17 に「ほかの視点」の名前として出たときに、チャンネル名ごと出て読みにくかった） */
 function cleanChannelName(name) {
-  return String(name || '').split(' / ')[0].replace(/【[^】]*】/g, '').trim();
+  let n = String(name || '').split(' / ')[0].replace(/【[^】]*】/g, '').trim();
+  const inner = n.match(/[‐\-–]\s*([^‐\-–]+?)\s*[‐\-–]\s*$/);
+  if (inner) n = inner[1].trim();
+  return n;
 }
