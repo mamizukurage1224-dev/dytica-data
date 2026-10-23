@@ -5,6 +5,7 @@
    - ショウケースのシート（ショウの動画）
    - MECHATU-NE ARCHIVE（楽曲）
    - ディスコグラフィ（ショウケースのシートの「ディスコグラフィ」と、Dytica のシートの「ディスコグラフィ」）
+   - 記事（ショウケースのシートの「記事」と、Dytica のシートの「記事」）
    GitHub Actions が3時間おき（と、シートが変わったとき）に動かし、out/ を GitHub Pages で配る。
 
    点検の決まり（決めたこと.md の5章）：
@@ -15,7 +16,7 @@
    使い方:
      node export/build.js                  … 読んで out/ に書く
      node export/build.js --from <フォルダ>  … 手元のファイルから読む（試すとき。dytica.csv / showcase.csv / songs.json、
-                                             あれば showcaseDisco.csv / dyticaDisco.csv）
+                                             あれば showcaseDisco.csv / dyticaDisco.csv / showcaseArticles.csv / dyticaArticles.csv）
      node export/build.js --out <フォルダ>   … 書き出し先を変える
      node export/build.js --prev <フォルダ>  … 前回の公開の代わりに、手元の前回の out/ と比べる（試すとき）
    環境変数 PAGES_URL … 公開中のデータの場所。前回の件数・点検と比べるのと、他枠の持ち主の名前の控えを読むのに使う
@@ -43,6 +44,10 @@ const SOURCES = {
      ほかの3人のぶんは Dytica のシートの「ディスコグラフィ」タブ（列は同じ＋「参加」）。
      ⚠️ タブを作り直したら gid も変わる（シートの URL の #gid= のあとの数字）。空なら読まない */
   showcaseDisco: { label: 'ショウケースのシート（ディスコグラフィ）', id: '1S9GmmMs6Rt3hMra3RW8Ijveh61dJg7-iCwFubJPyzJU', gid: '83070678' },
+  /* 記事（雑誌・ウェブの記事・特集）。ディスコグラフィと同じく、ショウのぶんはショウケースの「記事」、ほかは Dytica のシートの「記事」タブ（列は同じ＋「参加」）。
+     ⚠️ タブを作り直したら gid も変わる（シートの URL の #gid= のあとの数字）。空なら読まない */
+  showcaseArticles: { label: 'ショウケースのシート（記事）', id: '1S9GmmMs6Rt3hMra3RW8Ijveh61dJg7-iCwFubJPyzJU', gid: '1541969232' },
+  dyticaArticles:   { label: 'Dytica のシート（記事）',     id: '1Zh1XKg8B_j59gdfsCI9GVmPhKPFHjGb086dmbGjl5LY', gid: '1275787904' },   // 2026-10-19 に持ち主が作ったタブ
   dyticaDisco:   { label: 'Dytica のシート（ディスコグラフィ）',     id: '1Zh1XKg8B_j59gdfsCI9GVmPhKPFHjGb086dmbGjl5LY', gid: '1783567461' },   // 2026-10-15 に持ち主が作ったタブ
 };
 
@@ -86,6 +91,7 @@ async function main() {
   const sc = parseShowcase(showcaseRows);
   if (report.errors.length) return finish(null);
   const discography = await buildDiscography(previous);
+  const articles = await buildArticles(previous);
 
   // ── まとめる ──
   const songs = buildSongs(songsData);
@@ -97,9 +103,9 @@ async function main() {
   const groups = groupSameCollab(videos);
 
   // ── 件数が大きく減っていないか ──
-  const counts = { videos: videos.length, songs: songs.length, discography: discography.length };
+  const counts = { videos: videos.length, songs: songs.length, discography: discography.length, articles: articles.length };
   if (previous.meta && previous.meta.counts) {
-    // ⚠️ ディスコグラフィは件数で止めない（20件ほどしかなく、2件消しただけで9割を切る）
+    // ⚠️ ディスコグラフィ・記事は件数で止めない（20件ほどしかなく、2件消しただけで9割を切る）
     ['videos', 'songs'].forEach(k => {
       const before = previous.meta.counts[k] || 0;
       if (before && counts[k] < before * MIN_RATIO) {
@@ -110,7 +116,7 @@ async function main() {
   }
   if (report.errors.length) return finish(null);
 
-  finish({ videos, songs, groups, counts, discography });
+  finish({ videos, songs, groups, counts, discography, articles });
 }
 
 // ───────────────────────── 読む ─────────────────────────
@@ -159,11 +165,11 @@ async function readJson(key) {
 
 // 公開中の meta.json（前回の件数）・report.json（前回の点検）・他枠の持ち主の名前の控え。無くても止めない（初回は無い）
 async function readPrevious() {
-  const prev = { meta: null, report: null, hosts: {}, discography: null, holodex: null };
+  const prev = { meta: null, report: null, hosts: {}, discography: null, articles: null, holodex: null };
   readPrevious.last = prev;
   if (args.prev) {   // 試すとき：前回の公開の代わりに、手元のフォルダ（前回の out/）を読む
     const read = f => { try { return JSON.parse(fs.readFileSync(path.join(args.prev, f), 'utf8')); } catch (e) { return null; } };
-    prev.meta = read('meta.json'); prev.report = read('report.json'); prev.hosts = read('cache/hosts.json') || {}; prev.discography = read('discography.json'); prev.holodex = read('cache/holodex-sho.json');
+    prev.meta = read('meta.json'); prev.report = read('report.json'); prev.hosts = read('cache/hosts.json') || {}; prev.discography = read('discography.json'); prev.articles = read('articles.json'); prev.holodex = read('cache/holodex-sho.json');
     return prev;
   }
   if (!PAGES_URL || FROM) return prev;
@@ -171,6 +177,7 @@ async function readPrevious() {
   try { prev.report = JSON.parse(await fetchText(PAGES_URL + 'report.json?t=' + Date.now())); } catch (e) {}
   try { prev.hosts = JSON.parse(await fetchText(PAGES_URL + 'cache/hosts.json?t=' + Date.now())); } catch (e) {}
   try { prev.discography = JSON.parse(await fetchText(PAGES_URL + 'discography.json?t=' + Date.now())); } catch (e) {}
+  try { prev.articles = JSON.parse(await fetchText(PAGES_URL + 'articles.json?t=' + Date.now())); } catch (e) {}
   try { prev.holodex = JSON.parse(await fetchText(PAGES_URL + 'cache/holodex-sho.json?t=' + Date.now())); } catch (e) {}
   readPrevious.last = prev;
   return prev;
@@ -586,6 +593,79 @@ function parseDisco(rows, key) {
   return out;
 }
 
+/* 記事（雑誌・ウェブの記事・特集）。ショウケースのシートの行はショウが出ている記事、Dytica のシートの行は「参加」に書いた人の記事。
+   同じ記事が両方にあるとき（Dytica・MECHATU-A の記事など）は、URL で見分けて1件にし、出ている人を合わせる。
+   ⚠️ 読めなくても止めず、前回の公開のものを使う（ディスコグラフィと同じ） */
+async function buildArticles(previous) {
+  const scRows = await readSheetSoft('showcaseArticles');
+  const dyRows = await readSheetSoft('dyticaArticles');
+  if (!SOURCES.dyticaArticles.gid && !FROM) note('Dytica のシートの「記事」タブは、まだ読んでいません（タブを作ったら export/build.js に gid を入れる）');
+  if (!scRows && !dyRows) return (previous && previous.articles) || [];
+  const byKey = {};
+  const order = [];
+  const add = (item) => {
+    const key = articleKey(item.u) || item.t;
+    const had = byKey[key];
+    if (!had) { byKey[key] = item; order.push(key); return; }
+    had.m = sortMembers(Array.from(new Set(had.m.concat(item.m))));
+    ['d', 'g'].forEach(f => { if (!had[f] && item[f]) had[f] = item[f]; });
+  };
+  if (scRows) parseArticles(scRows, 'showcaseArticles').forEach(add);
+  if (dyRows) parseArticles(dyRows, 'dyticaArticles').forEach(add);
+  return order.map(k => byKey[k]).sort((a, b) => String(b.d || '').localeCompare(String(a.d || '')) || a.t.localeCompare(b.t));
+}
+
+/* 記事のシートの1行 → 記事。見出しはショウケースに合わせた（「ＵＲＬ」は全角）。
+   ⚠️ 見出しが無いときも止めない（その表だけ読まずに知らせる） */
+function parseArticles(rows, key) {
+  const label = SOURCES[key].label;
+  const header = rows[0].map(h => String(h).trim());
+  const need = ['日付', '記事タイトル', 'ＵＲＬ', 'カテゴリ'].concat(key === 'dyticaArticles' ? ['参加'] : []);
+  const missing = need.filter(h => header.indexOf(h) === -1);
+  if (missing.length) { warn(label + ' に見出しが見つかりません：' + missing.join('、') + '。この表は読んでいません'); return []; }
+  const col = h => header.indexOf(h);
+  const out = [];
+  for (let i = 1; i < rows.length; i++) {
+    const r = rows[i];
+    const get = h => (col(h) < 0 ? '' : String(r[col(h)] == null ? '' : r[col(h)]).trim());
+    const title = get('記事タイトル');
+    if (!title) continue;
+    const rowNo = i + 1;
+    const url = get('ＵＲＬ');
+    if (!/^https?:\/\//.test(url)) { rowIssue(key, rowNo, 'ＵＲＬ が読めないので、この行は載せていません'); continue; }
+    const item = { t: title, u: url };
+    const date = normDate(get('日付'));
+    if (date) item.d = date;
+    else if (get('日付')) rowIssue(key, rowNo, '日付「' + get('日付') + '」が読めません（2026/09/18 の形で、文字として入れてください）。日付なしで載せました');
+    const cat = get('カテゴリ'); if (cat) item.g = cat;
+    if (key === 'showcaseArticles') item.m = ['sho'];
+    else {
+      const ms = [];
+      splitList(get('参加')).forEach(n => {
+        const k = KEY_BY_SHORT[n] || KEY_BY_NAME[nameKey(n)];
+        if (k) { if (ms.indexOf(k) === -1) ms.push(k); }
+        else rowIssue(key, rowNo, '参加の「' + n + '」が4人の誰か分かりません（ショウ・カゲツ・ロウ・ライ のどれか）。外しました');
+      });
+      if (!ms.length) { rowIssue(key, rowNo, '参加が空なので、この行は載せていません'); continue; }
+      item.m = sortMembers(ms);
+    }
+    out.push(item);
+  }
+  return out;
+}
+
+/* 記事の URL を比べるときの形。
+   ⚠️ ? のあとを丸ごと捨てないこと。animatetimes.com は ?id= で記事を見分けるので、別の記事が1つにまとまってしまう（試したときに起きた）。
+      捨てるのは、記事を見分けるのに使わない付け足し（?rtw・utm_…・si など）だけ */
+function articleKey(u) {
+  try {
+    const url = new URL(String(u || '').trim());
+    [...url.searchParams.keys()].forEach(k => { if (/^(utm_.*|si|rtw|ref|x_share|lang|s)$/i.test(k)) url.searchParams.delete(k); });
+    url.searchParams.sort();
+    return url.host.toLowerCase() + url.pathname.replace(/\/$/, '') + (url.search || '');
+  } catch (e) { return ''; }
+}
+
 // 販売ページの URL を比べるときの形（?lang=ja や末尾の / の違いを同じにする）
 function normUrl(u) {
   const m = String(u || '').trim().match(/^https?:\/\/([^\/?#]+)([^?#]*)/i);
@@ -630,6 +710,7 @@ function finish(data) {
   write('videos/latest.json', vids.slice(0, 60));
   write('songs.json', data.songs);
   write('discography.json', data.discography);
+  write('articles.json', data.articles);
   write('cache/hosts.json', fillGuestHosts.cache || {});
   write('cache/holodex-sho.json', fillShoStarts.cache || { fullAt: '', items: {} });
 
@@ -650,7 +731,7 @@ function finish(data) {
   fs.writeFileSync(path.join(OUT, 'report.json'), JSON.stringify(status, null, 1));
   fs.writeFileSync(path.join(OUT, '.nojekyll'), '');
   summary(status, meta);
-  console.log('書き出しました：動画 ' + data.counts.videos + ' 件・楽曲 ' + data.counts.songs + ' 件・ディスコグラフィ ' + data.counts.discography + ' 件・同じ企画のまとまり ' + data.groups + ' 組' +
+  console.log('書き出しました：動画 ' + data.counts.videos + ' 件・楽曲 ' + data.counts.songs + ' 件・ディスコグラフィ ' + data.counts.discography + ' 件・記事 ' + data.counts.articles + ' 件・同じ企画のまとまり ' + data.groups + ' 組' +
     '｜外した行・直したい項目 ' + report.rows.length + ' 件｜気になること ' + report.warnings.length + ' 件');
   if (process.env.GITHUB_OUTPUT) fs.appendFileSync(process.env.GITHUB_OUTPUT, 'content_hash=' + meta.contentHash + '\n');
 }
@@ -664,11 +745,11 @@ function summary(status, meta) {
   if (meta) {
     lines.push('| | 件数 | 大きさ |', '|---|---|---|');
     Object.keys(meta.files).forEach(f => lines.push('| ' + f + ' | | ' + Math.round(meta.files[f].bytes / 1024) + 'KB |'));
-    lines.push('', '動画 ' + meta.counts.videos + ' 件・楽曲 ' + meta.counts.songs + ' 件・ディスコグラフィ ' + meta.counts.discography + ' 件・同じ企画のまとまり ' + meta.sameCollabGroups + ' 組', '');
+    lines.push('', '動画 ' + meta.counts.videos + ' 件・楽曲 ' + meta.counts.songs + ' 件・ディスコグラフィ ' + meta.counts.discography + ' 件・記事 ' + meta.counts.articles + ' 件・同じ企画のまとまり ' + meta.sameCollabGroups + ' 組', '');
   }
   if (status.rows.length) {
     lines.push('### 外した行・直したい項目（' + status.rows.length + ' 件）', '', '| シート | 行 | 内容 |', '|---|---|---|');
-    const SHEET = { dytica: 'Dytica', showcase: 'ショウケース', dyticaDisco: 'Dytica（ディスコグラフィ）', showcaseDisco: 'ショウケース（ディスコグラフィ）' };
+    const SHEET = { dytica: 'Dytica', showcase: 'ショウケース', dyticaDisco: 'Dytica（ディスコグラフィ）', showcaseDisco: 'ショウケース（ディスコグラフィ）', dyticaArticles: 'Dytica（記事）', showcaseArticles: 'ショウケース（記事）' };
     status.rows.slice(0, 200).forEach(r => lines.push('| ' + (SHEET[r.source] || r.source) + ' | ' + r.row + ' | ' + r.message + ' |'));
     lines.push('');
   }
