@@ -25,10 +25,17 @@ const FORCE = !!args.force || process.env.WIKI_FORCE === 'true';
 const PAGES_URL = (process.env.PAGES_URL || '').replace(/\/?$/, '/');
 
 const WIKI_BASE = 'https://wikiwiki.jp/nijisanji/';
+/* 取り込みと同じ7人（ショウはショウケースの Wiki の点検があるので入れない）。並びは MECHATU-NE と同じ。
+   Oriens の4人は 2026-10-28 に足した（「赤城ウェン/動画一覧」などが、ほかの人と同じ形であることを確かめた）。
+   1人5ページほど（一覧＋年ごと）なので、8秒ずつ空けると全部で5分ほどかかる（週1回なので問題ない） */
 const MEMBERS = [
-  { key: 'kagetsu', name: '叢雲カゲツ' },
-  { key: 'rou',     name: '小柳ロウ' },
+  { key: 'wen',     name: '赤城ウェン' },
+  { key: 'rito',    name: '宇佐美リト' },
+  { key: 'ittetsu', name: '佐伯イッテツ' },
+  { key: 'mana',    name: '緋八マナ' },
   { key: 'rai',     name: '伊波ライ' },
+  { key: 'rou',     name: '小柳ロウ' },
+  { key: 'kagetsu', name: '叢雲カゲツ' },
 ];
 const FIRST_YEAR = 2023;
 const WAIT_MS = 8000;

@@ -1,4 +1,4 @@
-/* 4人のこれからの配信（配信予定・配信中）を Holodex から取って、out/upcoming.json に書く
+/* MECHATU-A の8人のこれからの配信（配信予定・配信中）を Holodex から取って、out/upcoming.json に書く
 
    なぜ Holodex か：
      シートに入るのは、持ち主が登録したものか、取り込み（Apps Script）が拾った公開済みの動画だけ。
@@ -24,12 +24,16 @@ const FROM = typeof args.from === 'string' ? args.from : '';
 const PAGES_URL = (process.env.PAGES_URL || '').replace(/\/?$/, '/');
 const KEY = (process.env.HOLODEX_API_KEY || '').trim();
 
-// 4人のチャンネル（export/build.js の MEMBERS と同じ。並びも同じ）
+// 8人のチャンネル（export/build.js の MEMBERS と同じ。並びも同じ＝MECHATU-NE ARCHIVE の順）
 const MEMBERS = [
+  { key: 'wen',     channelId: 'UC1vawzfbCnRpHT9SJ5pHlHw' },
+  { key: 'rito',    channelId: 'UCambvP8yxNDot4FzQc9cgiw' },
+  { key: 'ittetsu', channelId: 'UCy8P3o5XlMpJGQY4WugzdNA' },
+  { key: 'mana',    channelId: 'UCqXxS-9x9Ha_UiH6hG4kh5Q' },
+  { key: 'rai',     channelId: 'UCz89MGFBrAqwJ5xMr5weSuA' },
+  { key: 'rou',     channelId: 'UC6WFKwYptsxVue56Lx218vg' },
   { key: 'sho',     channelId: 'UCgZ0pH7j6c9z-pkOG3PYw1Q' },
   { key: 'kagetsu', channelId: 'UChdY64fJb14Nfnbs8EGdQig' },
-  { key: 'rou',     channelId: 'UC6WFKwYptsxVue56Lx218vg' },
-  { key: 'rai',     channelId: 'UCz89MGFBrAqwJ5xMr5weSuA' },
 ];
 const KEY_BY_CHANNEL = {};
 MEMBERS.forEach(m => { KEY_BY_CHANNEL[m.channelId] = m.key; });

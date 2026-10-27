@@ -1,4 +1,4 @@
-/* Dytica サイトのデータを書き出す
+/* MECHATU-A（Oriens・Dytica の8人）のサイトのデータを書き出す（2026-10-28 に Dytica の4人から広げた）
 
    3か所を読んで、点検し、サイト用の小さいファイルにまとめて out/ に置く。
    - Dytica のシート（カゲツ・ロウ・ライの動画と他枠）
@@ -54,12 +54,26 @@ const SOURCES = {
 /* 4人。key はファイル名と URL に使う。色は決めたこと.md の7章。
    ⚠️ 元の色（mark）をそのまま文字に使わないこと。ライの黄緑は白地でコントラスト1.14でほぼ見えない。
       文字には textLight（明るい表示）／ textDark（暗い表示）を使う。印の上の文字は onMark。 */
-const MEMBERS = [
-  { key: 'sho',     short: 'ショウ', name: '星導ショウ', channelId: 'UCgZ0pH7j6c9z-pkOG3PYw1Q', mark: '#A58CDC', textLight: '#7F68B0', textDark: '#A58CDC', onMark: '#1A1A22' },
-  { key: 'kagetsu', short: 'カゲツ', name: '叢雲カゲツ', channelId: 'UChdY64fJb14Nfnbs8EGdQig', mark: '#6EB487', textLight: '#42815A', textDark: '#6EB487', onMark: '#1A1A22' },
-  { key: 'rou',     short: 'ロウ',   name: '小柳ロウ',   channelId: 'UC6WFKwYptsxVue56Lx218vg', mark: '#5A5FAA', textLight: '#5A5FAA', textDark: '#7278C6', onMark: '#FFFFFF' },
-  { key: 'rai',     short: 'ライ',   name: '伊波ライ',   channelId: 'UCz89MGFBrAqwJ5xMr5weSuA', mark: '#DCFF50', textLight: '#667D00', textDark: '#DCFF50', onMark: '#1A1A22' },
+/* MECHATU-A の8人（2026-10-28 に Dytica の4人から広げた。持ち主の判断）。
+   並びは MECHATU-NE ARCHIVE と同じ（Oriens → Dytica、ユニットの中も MECHATU-NE の順）。データの m もこの順に並べる。
+   色（mark）は非公式 Wiki の MECHATU-A のページの「カラーコード」（MECHATU-NE とも同じ）。
+   文字の色（textLight／textDark）は、明るい表示・暗い表示の地の色に対して 4.5:1 以上になるよう、元の色に黒を混ぜたり明るくしたりして作った。
+   チャンネルID は にじチェッカーのライバー一覧（radar/index.json）で確かめた。 */
+const UNITS = [
+  { id: 'oriens', name: 'Oriens', members: ['wen', 'rito', 'ittetsu', 'mana'] },
+  { id: 'dytica', name: 'Dytica', members: ['rai', 'rou', 'sho', 'kagetsu'] },
 ];
+const MEMBERS = [
+  { key: 'wen',     short: 'ウェン',   name: '赤城ウェン',   unit: 'oriens', channelId: 'UC1vawzfbCnRpHT9SJ5pHlHw', mark: '#FF8C9B', textLight: '#A65B65', textDark: '#FF8C9B', onMark: '#1A1A22' },
+  { key: 'rito',    short: 'リト',     name: '宇佐美リト',   unit: 'oriens', channelId: 'UCambvP8yxNDot4FzQc9cgiw', mark: '#FAC31E', textLight: '#8C6D11', textDark: '#FAC31E', onMark: '#1A1A22' },
+  { key: 'ittetsu', short: 'イッテツ', name: '佐伯イッテツ', unit: 'oriens', channelId: 'UCy8P3o5XlMpJGQY4WugzdNA', mark: '#8C4664', textLight: '#8C4664', textDark: '#BB7895', onMark: '#FFFFFF' },
+  { key: 'mana',    short: 'マナ',     name: '緋八マナ',     unit: 'oriens', channelId: 'UCqXxS-9x9Ha_UiH6hG4kh5Q', mark: '#64C8F0', textLight: '#3C7890', textDark: '#64C8F0', onMark: '#1A1A22' },
+  { key: 'rai',     short: 'ライ',     name: '伊波ライ',     unit: 'dytica', channelId: 'UCz89MGFBrAqwJ5xMr5weSuA', mark: '#DCFF50', textLight: '#667D00', textDark: '#DCFF50', onMark: '#1A1A22' },
+  { key: 'rou',     short: 'ロウ',     name: '小柳ロウ',     unit: 'dytica', channelId: 'UC6WFKwYptsxVue56Lx218vg', mark: '#5A5FAA', textLight: '#5A5FAA', textDark: '#7278C6', onMark: '#FFFFFF' },
+  { key: 'sho',     short: 'ショウ',   name: '星導ショウ',   unit: 'dytica', channelId: 'UCgZ0pH7j6c9z-pkOG3PYw1Q', mark: '#A58CDC', textLight: '#7F68B0', textDark: '#A58CDC', onMark: '#1A1A22' },
+  { key: 'kagetsu', short: 'カゲツ',   name: '叢雲カゲツ',   unit: 'dytica', channelId: 'UChdY64fJb14Nfnbs8EGdQig', mark: '#6EB487', textLight: '#42815A', textDark: '#6EB487', onMark: '#1A1A22' },
+];
+const SHO = 'sho';   // ショウのぶんはショウケースから読む（開始時刻を Holodex で補うのもショウだけ）
 const KEY_BY_SHORT = {}, KEY_BY_NAME = {};
 MEMBERS.forEach(m => { KEY_BY_SHORT[m.short] = m.key; KEY_BY_NAME[nameKey(m.name)] = m.key; });
 
@@ -261,17 +275,26 @@ function parseDytica(rows) {
     if (len) { const sec = hmsToSeconds(len); if (sec) v.l = sec; else rowIssue('dytica', rowNo, '再生時間「' + len + '」が読めないので、空として扱いました（0:37:46 の形で）', id); }
 
     const host = get('枠');
-    if (KEY_BY_SHORT[host]) v.h = KEY_BY_SHORT[host]; else if (host) v.o = host;
+    const hostKey = KEY_BY_SHORT[host] || KEY_BY_NAME[nameKey(host)];
+    if (hostKey) v.h = hostKey; else if (host) v.o = host;
 
     const members = [];
     splitList(get('出演')).forEach(n => {
       const k = KEY_BY_SHORT[n] || KEY_BY_NAME[nameKey(n)];
       if (k) { if (members.indexOf(k) === -1) members.push(k); }
-      else rowIssue('dytica', rowNo, '出演の「' + n + '」が4人の誰か分かりません（ショウ・カゲツ・ロウ・ライ のどれか）。外しました', id);
+      else rowIssue('dytica', rowNo, '出演の「' + n + '」が8人の誰か分かりません（ウェン・リト・イッテツ・マナ・ライ・ロウ・ショウ・カゲツ のどれか）。外しました', id);
     });
     if (v.h && members.indexOf(v.h) === -1) members.push(v.h);
+    /* コラボ相手に8人のだれかがいれば、出演に入れる。
+       ⚠️ 外すだけにしないこと。Dytica の4人だけを見ていたころは、Oriens の4人はコラボ相手に入っているので、
+          8人に広げたあとは、ここで出演に移さないと Oriens の人がどこにも出てこない */
+    const collabs = [];
+    splitList(get('コラボ相手')).forEach(n => {
+      const k = KEY_BY_NAME[nameKey(n)];
+      if (k) { if (members.indexOf(k) === -1) members.push(k); }
+      else collabs.push(n);
+    });
     v.m = sortMembers(members);
-    const collabs = splitList(get('コラボ相手')).filter(n => !KEY_BY_NAME[nameKey(n)]);
     if (collabs.length) v.c = collabs;
 
     const cat = get('カテゴリ'); if (cat) v.g = cat;
@@ -309,8 +332,8 @@ function parseShowcase(rows) {
 
     const v = { i: id, t: get('動画タイトル'), d: date, src: 'showcase', row: rowNo };
     const sec = hmsToSeconds(get('再生時間')); if (sec) v.l = sec;
-    if (!get('他チャンネル')) v.h = 'sho';
-    const members = ['sho'];
+    if (!get('他チャンネル')) v.h = SHO;
+    const members = [SHO];
     const collabs = [];
     splitList(get('コラボ相手')).forEach(n => {
       const k = KEY_BY_NAME[nameKey(n)];
@@ -386,7 +409,13 @@ async function fillGuestHosts(videos, previous) {
       }));
     }
   }
-  need.forEach(v => { if (cache[v.i]) v.o = cache[v.i]; });
+  need.forEach(v => {
+    if (!cache[v.i]) return;
+    // 枠の持ち主が8人のだれか（ショウが Oriens の人の枠に出た、など）なら、その人の枠にする
+    const k = KEY_BY_NAME[nameKey(cache[v.i])];
+    if (k) { v.h = k; if (v.m.indexOf(k) === -1) v.m = sortMembers(v.m.concat(k)); }
+    else v.o = cache[v.i];
+  });
   if (failed) warn('他枠の持ち主の名前が引けなかった動画：' + failed + '件（非公開・削除の可能性。次回また試します）');
   fillGuestHosts.cache = cache;
 }
@@ -409,7 +438,7 @@ async function fillShoStarts(videos, previous) {
     const full = !cache.fullAt || Date.now() - Date.parse(cache.fullAt) > HOLODEX_REFRESH_DAYS * 86400e3 || process.env.HOLODEX_FULL === 'true';
     try {
       for (const kind of ['videos', 'collabs']) {
-        const list = await holodexPages('/channels/' + MEMBERS[0].channelId + '/' + kind, full ? 80 : 2, key);
+        const list = await holodexPages('/channels/' + MEMBERS.find(m => m.key === SHO).channelId + '/' + kind, full ? 80 : 2, key);
         list.forEach(h => {
           const t = Date.parse(h.start_actual || '');
           if (!isNaN(t)) cache.items[h.id] = [Math.round(t / 1000), h.duration || 0];
@@ -425,7 +454,7 @@ async function fillShoStarts(videos, previous) {
   let filled = 0;
   const mismatch = [];
   videos.forEach(v => {
-    if (v.s || v.k !== 'L' || v.m.indexOf('sho') === -1) return;
+    if (v.s || v.k !== 'L' || v.m.indexOf(SHO) === -1) return;
     const h = cache.items[v.i];
     if (!h || !h[0]) return;
     const jst = new Date(h[0] * 1000 + 9 * 3600e3).toISOString();
@@ -577,13 +606,13 @@ function parseDisco(rows, key) {
     const shop = get('販売ページ'); if (/^https?:\/\//.test(shop)) item.b = shop;
     const vid = videoId(get('関連動画')); if (vid) item.v = vid;
     const memo = get('備考'); if (memo) item.n = memo;
-    if (key === 'showcaseDisco') item.m = ['sho'];
+    if (key === 'showcaseDisco') item.m = [SHO];
     else {
       const ms = [];
       splitList(get('参加')).forEach(n => {
         const k = KEY_BY_SHORT[n] || KEY_BY_NAME[nameKey(n)];
         if (k) { if (ms.indexOf(k) === -1) ms.push(k); }
-        else rowIssue(key, rowNo, '参加の「' + n + '」が4人の誰か分かりません（ショウ・カゲツ・ロウ・ライ のどれか）。外しました');
+        else rowIssue(key, rowNo, '参加の「' + n + '」が8人の誰か分かりません（ウェン・リト・イッテツ・マナ・ライ・ロウ・ショウ・カゲツ のどれか）。外しました');
       });
       if (!ms.length) { rowIssue(key, rowNo, '参加が空なので、この行は載せていません'); continue; }
       item.m = sortMembers(ms);
@@ -638,13 +667,13 @@ function parseArticles(rows, key) {
     if (date) item.d = date;
     else if (get('日付')) rowIssue(key, rowNo, '日付「' + get('日付') + '」が読めません（2026/09/18 の形で、文字として入れてください）。日付なしで載せました');
     const cat = get('カテゴリ'); if (cat) item.g = cat;
-    if (key === 'showcaseArticles') item.m = ['sho'];
+    if (key === 'showcaseArticles') item.m = [SHO];
     else {
       const ms = [];
       splitList(get('参加')).forEach(n => {
         const k = KEY_BY_SHORT[n] || KEY_BY_NAME[nameKey(n)];
         if (k) { if (ms.indexOf(k) === -1) ms.push(k); }
-        else rowIssue(key, rowNo, '参加の「' + n + '」が4人の誰か分かりません（ショウ・カゲツ・ロウ・ライ のどれか）。外しました');
+        else rowIssue(key, rowNo, '参加の「' + n + '」が8人の誰か分かりません（ウェン・リト・イッテツ・マナ・ライ・ロウ・ショウ・カゲツ のどれか）。外しました');
       });
       if (!ms.length) { rowIssue(key, rowNo, '参加が空なので、この行は載せていません'); continue; }
       item.m = sortMembers(ms);
@@ -718,7 +747,10 @@ function finish(data) {
     generatedAt: now,
     counts: data.counts,
     sameCollabGroups: data.groups,
-    members: MEMBERS.map(m => ({ key: m.key, short: m.short, name: m.name, mark: m.mark, textLight: m.textLight, textDark: m.textDark, onMark: m.onMark })),
+    members: MEMBERS.map(m => ({ key: m.key, short: m.short, name: m.name, unit: m.unit, mark: m.mark, textLight: m.textLight, textDark: m.textDark, onMark: m.onMark })),
+    units: UNITS,
+    // 人ごとの動画の数（「メンバーを選ぶ」の画面に出す。MECHATU-NE と同じ見せ方）
+    memberCounts: Object.fromEntries(MEMBERS.map(m => [m.key, vids.filter(v => v.m.indexOf(m.key) !== -1).length])),
     files: files,
   };
   /* 中身が前回と同じかを見分ける印。同じなら公開しなくてよい。
