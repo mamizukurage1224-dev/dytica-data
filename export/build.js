@@ -1,8 +1,8 @@
 /* MECHATU-A（Oriens・Dytica の8人）のサイトのデータを書き出す（2026-10-28 に Dytica の4人から広げた）
 
    3か所を読んで、点検し、サイト用の小さいファイルにまとめて out/ に置く。
-   - Dytica のシート（カゲツ・ロウ・ライの動画と他枠）
-   - ショウケースのシート（ショウの動画）
+   - Dytica のシート（ショウ以外の7人の動画と他枠・にじさんじ公式切り抜きチャンネルの動画）
+   - ショウケースのシート（ショウの動画と、「切り抜き」タブのショウの切り抜き）
    - MECHATU-NE ARCHIVE（楽曲）
    - ディスコグラフィ（ショウケースのシートの「ディスコグラフィ」と、Dytica のシートの「ディスコグラフィ」）
    - 記事（ショウケースのシートの「記事」と、Dytica のシートの「記事」）
@@ -16,7 +16,7 @@
    使い方:
      node export/build.js                  … 読んで out/ に書く
      node export/build.js --from <フォルダ>  … 手元のファイルから読む（試すとき。dytica.csv / showcase.csv / songs.json、
-                                             あれば showcaseDisco.csv / dyticaDisco.csv / showcaseArticles.csv / dyticaArticles.csv）
+                                             あれば showcaseDisco.csv / dyticaDisco.csv / showcaseArticles.csv / dyticaArticles.csv / showcaseClips.csv）
      node export/build.js --out <フォルダ>   … 書き出し先を変える
      node export/build.js --prev <フォルダ>  … 前回の公開の代わりに、手元の前回の out/ と比べる（試すとき）
    環境変数 PAGES_URL … 公開中のデータの場所。前回の件数・点検と比べるのと、他枠の持ち主の名前の控えを読むのに使う
@@ -49,6 +49,9 @@ const SOURCES = {
   showcaseArticles: { label: 'ショウケースのシート（記事）', id: '1S9GmmMs6Rt3hMra3RW8Ijveh61dJg7-iCwFubJPyzJU', gid: '1541969232' },
   dyticaArticles:   { label: 'Dytica のシート（記事）',     id: '1Zh1XKg8B_j59gdfsCI9GVmPhKPFHjGb086dmbGjl5LY', gid: '1275787904' },   // 2026-10-19 に持ち主が作ったタブ
   dyticaDisco:   { label: 'Dytica のシート（ディスコグラフィ）',     id: '1Zh1XKg8B_j59gdfsCI9GVmPhKPFHjGb086dmbGjl5LY', gid: '1783567461' },   // 2026-10-15 に持ち主が作ったタブ
+  /* ショウの切り抜き（公式やほかのライバーのチャンネルの切り抜き）。ショウのぶんはショウケースが正（動画と同じ）。
+     列は ID・再生リスト名・公開日・動画タイトル・動画URL・チャンネル（2026-10-28 に134本）。読めなくても止めない */
+  showcaseClips: { label: 'ショウケースのシート（切り抜き）', id: '1S9GmmMs6Rt3hMra3RW8Ijveh61dJg7-iCwFubJPyzJU', gid: '1764814068' },
 };
 
 /* 4人。key はファイル名と URL に使う。色は決めたこと.md の7章。
@@ -76,7 +79,19 @@ const MEMBERS = [
 const SHO = 'sho';   // ショウのぶんはショウケースから読む（開始時刻を Holodex で補うのもショウだけ）
 /* ユニットのチャンネル（Oriens）の枠の名前をそろえる。取り込みは「Oriens」と書くが、
    ユニットのチャンネルを取り込む前に他枠として入った行は「Oriensオリエンス」（Holodex のチャンネル名）になっているため */
+/* ⚠️ Cellmates を入れないこと。Cellmates は星導ショウが入っているグループのチャンネルだが、8人のほかの人はいない
+   （データの28本で確かめた。出演は全部ショウだけ）。ほかのチャンネルと同じ決まりでクリップを見分ける。
+   毎週の企画の動画はアーカイブ、合間の「手描き切り抜き」の Shorts はクリップ（2026-10-28、持ち主の判断。はじめはここに入れてクリップにしていなかった） */
 const UNIT_HOSTS = { [nameKey('Oriens')]: 'Oriens', [nameKey('Oriensオリエンス')]: 'Oriens' };
+/* 切り抜きのチャンネル。ここの動画は、タイトルにかかわらずクリップにする（2026-10-28、持ち主の判断）。
+   ⚠️ 取り込み（apps-script/import-videos.js の CLIP_CHANNELS）が枠に書く名前と同じ文字にすること。ショウケースの「切り抜き」タブのチャンネルの列も同じ文字 */
+const CLIP_HOSTS = new Set(['にじさんじ公式切り抜きチャンネル']);
+/* クリップと見なすタイトルの言葉。ショウケースの「切り抜き」タブで確かめた（2026-10-28、持ち主の判断）。
+   本人と Oriens 以外のチャンネルの98本のうち、「切り抜き」があるもの55本、公式切り抜きの【漫画】18本・【今週のにじさんじハイライト】10本。
+   残りの15本は、ほかのライバー・Cellmates のチャンネルの Shorts など（Cellmates の2本と、ショウのぶんは「切り抜き」タブから拾える）。タイトルがふつうの動画と同じ書き方なので、言葉では見分けられない。
+   ⚠️ 「まとめ」は入れないこと。ショウケースでは「切り抜き」と一緒にしか出てこない一方、こちらのデータでは
+      #にじクイ のクイズ動画（公式の企画。クリップにしないと持ち主が決めた）や、ほかの人の「〇日目まとめ」に当たった */
+const CLIP_TITLE = /切り?抜き|【漫画】|にじさんじハイライト/;
 const KEY_BY_SHORT = {}, KEY_BY_NAME = {};
 MEMBERS.forEach(m => { KEY_BY_SHORT[m.short] = m.key; KEY_BY_NAME[nameKey(m.name)] = m.key; });
 
@@ -107,21 +122,36 @@ async function main() {
   const dy = parseDytica(dyticaRows);
   const sc = parseShowcase(showcaseRows);
   if (report.errors.length) return finish(null);
+  const scClips = parseShowcaseClips(await readSheetSoft('showcaseClips'));
   const discography = await buildDiscography(previous);
   const articles = await buildArticles(previous);
 
   // ── まとめる ──
   const songs = buildSongs(songsData);
   const songIds = new Set(songs.map(s => s.i));
-  const videos = mergeVideos(dy, sc, songIds);
+  const videos = mergeVideos(dy, sc.concat(scClips), songIds);
   await fillGuestHosts(videos, previous);
   // ⚠️ 同じ企画のまとめ（開始時刻と長さで重なりを見る）より前に補うこと
   await fillShoStarts(videos, previous);
   videos.forEach(v => { if (v.o && UNIT_HOSTS[nameKey(v.o)]) v.o = UNIT_HOSTS[nameKey(v.o)]; });
+  /* クリップ（cl: 1）：本人のチャンネル以外で投稿された、配信ではない動画（動画・Shorts）のうち、次のどれかに当たるもの。
+     - 切り抜きのチャンネル（にじさんじ公式切り抜きチャンネル。CLIP_HOSTS）の動画
+     - ショウケースの「切り抜き」タブにある動画（持ち主が切り抜きとして入れたもの）
+     - タイトルに CLIP_TITLE の言葉（「切り抜き」など）があるもの
+     ⚠️ ほかのチャンネルの動画は、タイトルで絞ること（2026-10-28 持ち主の判断）。絞らないと、公式の告知の Shorts や企画の動画
+     （例：#にじクイ のクイズ動画）までクリップになった（絞る前は390本、そのうち公式のにじさんじが150本）
+     サイトではアーカイブ・新着・カレンダーから分けて、「クリップ」のページに出す（2026-10-28、持ち主の判断）。
+     ⚠️ ほかの人の枠の「配信」はクリップにしないこと（本人が出ている配信＝他枠で、アーカイブに載せるもの）。
+     ⚠️ Oriens のユニットのチャンネルの動画はクリップにしない（8人のうち4人のチャンネルのため）。ショウケースの「切り抜き」タブにあっても同じ */
+  const unitNames = new Set(Object.values(UNIT_HOSTS));
+  videos.forEach(v => {
+    if (!v.h && !unitNames.has(v.o) && v.k !== 'L' && (CLIP_HOSTS.has(v.o) || v.scClip || CLIP_TITLE.test(v.t))) v.cl = 1;
+    delete v.scClip;
+  });
   const groups = groupSameCollab(videos);
 
   // ── 件数が大きく減っていないか ──
-  const counts = { videos: videos.length, songs: songs.length, discography: discography.length, articles: articles.length };
+  const counts = { videos: videos.length, clips: videos.filter(v => v.cl).length, songs: songs.length, discography: discography.length, articles: articles.length };
   if (previous.meta && previous.meta.counts) {
     // ⚠️ ディスコグラフィ・記事は件数で止めない（20件ほどしかなく、2件消しただけで9割を切る）
     ['videos', 'songs'].forEach(k => {
@@ -256,6 +286,7 @@ function parseDytica(rows) {
   if (report.errors.length) return [];
   const out = [];
   const seen = {};
+  parseDytica.crossed = new Set();   // × の動画（ショウケースから入ってこないよう、mergeVideos で使う）
   for (let i = 1; i < rows.length; i++) {
     const r = rows[i];
     const get = h => String(r[col[h]] == null ? '' : r[col[h]]).trim();
@@ -264,7 +295,7 @@ function parseDytica(rows) {
     const id = videoId(get('動画URL'));
     if (!id) { rowIssue('dytica', rowNo, '動画URL が読めないので、この行は載せていません'); continue; }
     const mark = get('確認');
-    if (isCross(mark)) continue;
+    if (isCross(mark)) { parseDytica.crossed.add(id); continue; }
     if (mark && !isCircle(mark)) rowIssue('dytica', rowNo, '確認の印「' + mark + '」が分かりません（○ か × にしてください）。載せる扱いにしました', id);
     if (seen[id]) { rowIssue('dytica', rowNo, '同じ動画が ' + seen[id] + ' 行目にもあります。こちらは載せていません', id); continue; }
     seen[id] = rowNo;
@@ -356,6 +387,39 @@ function parseShowcase(rows) {
   return out;
 }
 
+/* ショウケースの「切り抜き」タブの1行 → 動画（ショウが出ている切り抜き）。
+   チャンネルが8人のだれかなら、その人の枠（本人の動画なのでクリップにはならない）。ほかは scClip を付け、あとでクリップにする。
+   長さの列が無いので、種別は URL で決める（/shorts/ なら Shorts）。
+   ⚠️ 読めなくても止めない（無くてもサイトは成り立つ）。見出しが見つからなければ知らせて、読まなかった扱いにする */
+function parseShowcaseClips(rows) {
+  if (!rows) return [];
+  const label = SOURCES.showcaseClips.label;
+  const header = rows[0].map(h => String(h).trim());
+  const col = {};
+  const missing = ['動画URL', '動画タイトル', '公開日', 'チャンネル'].filter(h => (col[h] = header.indexOf(h)) < 0);
+  if (missing.length) { warn(label + ' に見出しが見つからないので、読みませんでした：' + missing.join('、')); return []; }
+  const out = [];
+  const seen = {};
+  for (let i = 1; i < rows.length; i++) {
+    const r = rows[i];
+    const get = h => String(r[col[h]] == null ? '' : r[col[h]]).trim();
+    const url = get('動画URL');
+    if (!url) continue;   // 先に番号だけ入れた空の行がある（動画情報と同じ）
+    const id = videoId(url);
+    if (!id || seen[id]) continue;
+    seen[id] = true;
+    const date = normDate(get('公開日'));
+    if (!date) { rowIssue('showcaseClips', i + 1, '公開日「' + get('公開日') + '」が読めないので、載せていません', id); continue; }
+    const v = { i: id, t: get('動画タイトル'), d: date, src: 'showcase', row: i + 1, m: [SHO], k: /\/shorts\//.test(url) ? 'S' : 'V' };
+    const ch = get('チャンネル');
+    const k = KEY_BY_NAME[nameKey(ch)];
+    if (k) { v.h = k; v.m = sortMembers(Array.from(new Set([SHO, k]))); }
+    else { if (ch) v.o = ch; v.scClip = 1; }
+    out.push(v);
+  }
+  return out;
+}
+
 // ───────────────────────── まとめる ─────────────────────────
 
 /* 同じ動画が両方にあるとき（ショウがカゲツの枠に出た、など）は1件にまとめる。
@@ -368,10 +432,14 @@ function parseShowcase(rows) {
 function mergeVideos(dy, sc, songIds) {
   const byId = {};
   dy.forEach(v => { byId[v.i] = v; });
+  const crossed = parseDytica.crossed || new Set();
   sc.forEach(s => {
+    if (crossed.has(s.i)) return;
     const v = byId[s.i];
     if (!v) { byId[s.i] = s; return; }
-    v.src = 'both';
+    if (v.src !== s.src) v.src = 'both';
+    if (s.scClip) v.scClip = 1;
+    if (!v.h && !v.o && (s.h || s.o)) { if (s.h) v.h = s.h; else v.o = s.o; }
     v.m = sortMembers(Array.from(new Set(v.m.concat(s.m))));
     const c = mergeNames(v.c || [], s.c || []);
     if (c.length) v.c = c;
@@ -383,8 +451,8 @@ function mergeVideos(dy, sc, songIds) {
     if (s.d3) v.d3 = 1;
     if (s.sg) v.sg = 1;
   });
-  // Dytica のシートで × にした動画は、ショウケースにあっても載せない（持ち主が「載せない」と決めたもの）
-  // （× の行は parseDytica で落としているので、ここでは確認の印を持つ行をもう一度見る必要はない）
+  // Dytica のシートで × にした動画は、ショウケースにあっても載せない（持ち主が「載せない」と決めたもの。上の crossed で外す）
+  // ⚠️ parseDytica で × の行を落とすだけにしないこと。ショウケースにある動画が、そちらから入ってきてしまう（2026-10-28 に直した）
   const list = Object.values(byId).filter(v => {
     if (!songIds.has(v.i)) return true;
     if (v.src !== 'showcase') warn('楽曲（MECHATU-NE に載っている曲）が動画のシートにあります：' + v.i + '「' + v.t.slice(0, 30) + '」。動画からは外しました（確認に × を付けてください）');
@@ -740,7 +808,8 @@ function finish(data) {
   write('videos/all.json', vids);
   MEMBERS.forEach(m => write('videos/' + m.key + '.json', vids.filter(v => v.m.indexOf(m.key) !== -1)));
   write('videos/dytica.json', vids.filter(v => v.m.length >= 2));
-  write('videos/latest.json', vids.slice(0, 60));
+  write('videos/latest.json', vids.filter(v => !v.cl).slice(0, 60));
+  write('videos/clips.json', vids.filter(v => v.cl));
   /* 月ごとの動画（カレンダーで使う）。
      ⚠️ カレンダーで全員ぶん（videos/all.json、圧縮後562KB）を読まないこと。8人に広げて重くなったため、
         表示している月と前後の月だけを読む（1か月ぶんは圧縮後10KB ほど） */
@@ -793,7 +862,7 @@ function buildCombos(vids, songs) {
   const pick = v => (v ? { i: v.i, t: v.t, d: v.d } : null);
   const stats = (keys, name) => {
     const has = m => keys.every(k => m.indexOf(k) !== -1);
-    const list = vids.filter(v => has(v.m) && v.d <= today);
+    const list = vids.filter(v => !v.cl && has(v.m) && v.d <= today);
     const groups = {};
     list.forEach(v => { if (v.p) (groups[v.p] = groups[v.p] || []).push(v); });
     const mains = [];
@@ -840,7 +909,7 @@ function summary(status, meta) {
   }
   if (status.rows.length) {
     lines.push('### 外した行・直したい項目（' + status.rows.length + ' 件）', '', '| シート | 行 | 内容 |', '|---|---|---|');
-    const SHEET = { dytica: 'Dytica', showcase: 'ショウケース', dyticaDisco: 'Dytica（ディスコグラフィ）', showcaseDisco: 'ショウケース（ディスコグラフィ）', dyticaArticles: 'Dytica（記事）', showcaseArticles: 'ショウケース（記事）' };
+    const SHEET = { dytica: 'Dytica', showcase: 'ショウケース', dyticaDisco: 'Dytica（ディスコグラフィ）', showcaseDisco: 'ショウケース（ディスコグラフィ）', dyticaArticles: 'Dytica（記事）', showcaseArticles: 'ショウケース（記事）', showcaseClips: 'ショウケース（切り抜き）' };
     status.rows.slice(0, 200).forEach(r => lines.push('| ' + (SHEET[r.source] || r.source) + ' | ' + r.row + ' | ' + r.message + ' |'));
     lines.push('');
   }
@@ -851,8 +920,9 @@ function summary(status, meta) {
 
 // ───────────────────────── 小さな道具 ─────────────────────────
 
+// ⚠️ 「youtu.be//動画ID」（/ が2つ）も読むこと。ショウケースの「切り抜き」タブに、この形の URL がある（2026-10-28）
 function videoId(url) {
-  const m = String(url || '').match(/(?:youtube\.com\/(?:watch\?(?:.*&)?v=|shorts\/|live\/|embed\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/);
+  const m = String(url || '').match(/(?:youtube\.com\/(?:watch\?(?:.*&)?v=|shorts\/|live\/|embed\/)|youtu\.be\/+)([A-Za-z0-9_-]{11})/);
   return m ? m[1] : '';
 }
 
