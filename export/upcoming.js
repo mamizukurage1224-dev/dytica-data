@@ -37,6 +37,10 @@ const MEMBERS = [
 ];
 const KEY_BY_CHANNEL = {};
 MEMBERS.forEach(m => { KEY_BY_CHANNEL[m.channelId] = m.key; });
+/* ユニットのチャンネル（2026-10-28 に足した）。ここの配信は、出演者が分からなくてもユニットの4人の配信として扱う。枠の名前は「Oriens」 */
+const UNIT_CHANNELS = [
+  { name: 'Oriens', channelId: 'UCwNNw9kUM-Bo0n2ktXOPB7Q', members: ['wen', 'rito', 'ittetsu', 'mana'] },
+];
 
 /* 載せる範囲。
    - 先の予定は30日まで。⚠️ フリーチャットの枠は何年も先の日付で置いてあることが多く、そのままだと一覧の頭に居座る
@@ -66,7 +70,7 @@ async function main() {
 async function fetchHolodex() {
   if (FROM) return JSON.parse(fs.readFileSync(FROM, 'utf8'));
   if (!KEY) throw new Error('キー（HOLODEX_API_KEY）がありません。GitHub の Settings → Secrets and variables → Actions に登録してください');
-  const url = 'https://holodex.net/api/v2/users/live?channels=' + MEMBERS.map(m => m.channelId).join(',');
+  const url = 'https://holodex.net/api/v2/users/live?channels=' + MEMBERS.map(m => m.channelId).concat(UNIT_CHANNELS.map(u => u.channelId)).join(',');
   let last;
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
@@ -105,6 +109,8 @@ function toItems(raw) {
     const members = new Set();
     const others = [];
     if (KEY_BY_CHANNEL[hostId]) members.add(KEY_BY_CHANNEL[hostId]);
+    const unit = UNIT_CHANNELS.find(u => u.channelId === hostId);
+    if (unit && !(v.mentions || []).some(x => KEY_BY_CHANNEL[x.id])) unit.members.forEach(k => members.add(k));
     (v.mentions || []).forEach(x => {
       if (KEY_BY_CHANNEL[x.id]) members.add(KEY_BY_CHANNEL[x.id]);
       else if (x.id !== hostId) { const n = cleanChannelName(x.name); if (n && others.indexOf(n) === -1) others.push(n); }
@@ -114,7 +120,7 @@ function toItems(raw) {
     const item = { i: v.id, t: String(v.title || '').trim(), s: new Date(start).toISOString() };
     if (v.status === 'live') item.live = 1;
     if (KEY_BY_CHANNEL[hostId]) item.h = KEY_BY_CHANNEL[hostId];
-    else item.o = cleanChannelName(v.channel && v.channel.name) || '';
+    else item.o = unit ? unit.name : (cleanChannelName(v.channel && v.channel.name) || '');
     item.m = MEMBERS.map(m => m.key).filter(k => members.has(k));
     if (others.length) item.c = others;
     out.push(item);

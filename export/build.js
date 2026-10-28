@@ -74,6 +74,9 @@ const MEMBERS = [
   { key: 'kagetsu', short: 'カゲツ',   name: '叢雲カゲツ',   unit: 'dytica', channelId: 'UChdY64fJb14Nfnbs8EGdQig', mark: '#6EB487', textLight: '#42815A', textDark: '#6EB487', onMark: '#1A1A22' },
 ];
 const SHO = 'sho';   // ショウのぶんはショウケースから読む（開始時刻を Holodex で補うのもショウだけ）
+/* ユニットのチャンネル（Oriens）の枠の名前をそろえる。取り込みは「Oriens」と書くが、
+   ユニットのチャンネルを取り込む前に他枠として入った行は「Oriensオリエンス」（Holodex のチャンネル名）になっているため */
+const UNIT_HOSTS = { [nameKey('Oriens')]: 'Oriens', [nameKey('Oriensオリエンス')]: 'Oriens' };
 const KEY_BY_SHORT = {}, KEY_BY_NAME = {};
 MEMBERS.forEach(m => { KEY_BY_SHORT[m.short] = m.key; KEY_BY_NAME[nameKey(m.name)] = m.key; });
 
@@ -114,6 +117,7 @@ async function main() {
   await fillGuestHosts(videos, previous);
   // ⚠️ 同じ企画のまとめ（開始時刻と長さで重なりを見る）より前に補うこと
   await fillShoStarts(videos, previous);
+  videos.forEach(v => { if (v.o && UNIT_HOSTS[nameKey(v.o)]) v.o = UNIT_HOSTS[nameKey(v.o)]; });
   const groups = groupSameCollab(videos);
 
   // ── 件数が大きく減っていないか ──
@@ -737,6 +741,14 @@ function finish(data) {
   MEMBERS.forEach(m => write('videos/' + m.key + '.json', vids.filter(v => v.m.indexOf(m.key) !== -1)));
   write('videos/dytica.json', vids.filter(v => v.m.length >= 2));
   write('videos/latest.json', vids.slice(0, 60));
+  /* 月ごとの動画（カレンダーで使う）。
+     ⚠️ カレンダーで全員ぶん（videos/all.json、圧縮後562KB）を読まないこと。8人に広げて重くなったため、
+        表示している月と前後の月だけを読む（1か月ぶんは圧縮後10KB ほど） */
+  const byMonth = {};
+  vids.forEach(v => { (byMonth[v.d.slice(0, 7)] = byMonth[v.d.slice(0, 7)] || []).push(v); });
+  Object.keys(byMonth).sort().forEach(ym => write('videos/month/' + ym + '.json', byMonth[ym]));
+  // 組み合わせの数（メンバーのページで使う）。⚠️ ページを開くたびに全員ぶんを読んで数えないで済むよう、ここで先に数える
+  write('combos.json', buildCombos(vids, data.songs));
   write('songs.json', data.songs);
   write('discography.json', data.discography);
   write('articles.json', data.articles);
@@ -768,6 +780,51 @@ function finish(data) {
   if (process.env.GITHUB_OUTPUT) fs.appendFileSync(process.env.GITHUB_OUTPUT, 'content_hash=' + meta.contentHash + '\n');
 }
 
+/* 組み合わせ（ペア28組と、ユニット：Oriens・Dytica・MECHATU-A）ごとの記録。メンバーのページの「組み合わせ」に出す。
+   数え方はサイトで数えていたときと同じ（src/members-page.jsx から移した。2026-10-28）：
+   - 一緒に出た回数：その人たちがそろって出ている回。同じ企画を別々の枠で配信したもの（p が同じ）は1回。配信予定（未来の日付）は数えない
+   - うち、その人たちだけ：MECHATU-A のほかの人がいない回
+   - 初めて・最近の共演は「配信」から選ぶ（動画まで含めると、どの組み合わせもデビューのティザー PV になったため）
+   - その人たちだけで初めての配信は「ほかに誰もいない回」（コラボ相手も空）から選ぶ（3人の回がサシとして出たため）
+   ⚠️ 同じ企画の代表の選び方を、サイトの groupSameCollab と同じにすること（組み合わせの人の枠を代表にする）。食い違うと、サイトの一覧と数が合わなくなる */
+function buildCombos(vids, songs) {
+  const today = new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10);
+  const keysAll = MEMBERS.map(m => m.key);
+  const pick = v => (v ? { i: v.i, t: v.t, d: v.d } : null);
+  const stats = (keys, name) => {
+    const has = m => keys.every(k => m.indexOf(k) !== -1);
+    const list = vids.filter(v => has(v.m) && v.d <= today);
+    const groups = {};
+    list.forEach(v => { if (v.p) (groups[v.p] = groups[v.p] || []).push(v); });
+    const mains = [];
+    const used = {};
+    list.forEach(v => {
+      if (!v.p) { mains.push(v); return; }
+      if (used[v.p]) return;
+      used[v.p] = true;
+      const g = groups[v.p].slice().sort((a, b) => memberOrder(a.h) - memberOrder(b.h));
+      mains.push(keys.map(k => g.find(x => x.h === k)).find(Boolean) || g[0]);
+    });
+    const byYear = {};
+    mains.forEach(v => { byYear[v.d.slice(0, 4)] = (byYear[v.d.slice(0, 4)] || 0) + 1; });
+    const lives = mains.filter(v => v.k === 'L');
+    const from = lives.length ? lives : mains;
+    const onlyLives = lives.filter(v => v.m.length === keys.length && !(v.c && v.c.length));
+    const out = {
+      keys, count: mains.length, only: mains.filter(v => v.m.length === keys.length).length, byYear,
+      first: pick(from[from.length - 1]), latest: pick(from[0]),               // データは新しい順
+      firstOnly: pick(onlyLives[onlyLives.length - 1]),
+      songs: songs.filter(x => has(x.m)).map(x => x.t),
+    };
+    if (name) out.name = name;
+    return out;
+  };
+  const pairs = [];
+  for (let a = 0; a < keysAll.length; a++) for (let b = a + 1; b < keysAll.length; b++) pairs.push(stats([keysAll[a], keysAll[b]]));
+  const units = UNITS.map(u => stats(u.members, u.name)).concat([stats(keysAll, 'MECHATU-A')]);
+  return { today, pairs, units };
+}
+
 // 実行のページの「Summary」に出す（GitHub Actions のときだけ）
 function summary(status, meta) {
   const file = process.env.GITHUB_STEP_SUMMARY;
@@ -776,7 +833,9 @@ function summary(status, meta) {
   if (!status.ok) lines.push('### ⛔ 止めました（公開していません。前のデータのままです）', '', ...status.errors.map(e => '- ' + e), '');
   if (meta) {
     lines.push('| | 件数 | 大きさ |', '|---|---|---|');
-    Object.keys(meta.files).forEach(f => lines.push('| ' + f + ' | | ' + Math.round(meta.files[f].bytes / 1024) + 'KB |'));
+    const monthFiles = Object.keys(meta.files).filter(f => f.startsWith('videos/month/'));
+    Object.keys(meta.files).filter(f => monthFiles.indexOf(f) === -1).forEach(f => lines.push('| ' + f + ' | | ' + Math.round(meta.files[f].bytes / 1024) + 'KB |'));
+    if (monthFiles.length) lines.push('| videos/month/（' + monthFiles.length + 'か月ぶん） | | 合わせて ' + Math.round(monthFiles.reduce((n, f) => n + meta.files[f].bytes, 0) / 1024) + 'KB |');
     lines.push('', '動画 ' + meta.counts.videos + ' 件・楽曲 ' + meta.counts.songs + ' 件・ディスコグラフィ ' + meta.counts.discography + ' 件・記事 ' + meta.counts.articles + ' 件・同じ企画のまとまり ' + meta.sameCollabGroups + ' 組', '');
   }
   if (status.rows.length) {

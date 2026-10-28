@@ -41,6 +41,8 @@ node export/build.js --prev <フォルダ>   前回の公開の代わりに、�
 | `videos/sho.json` など | その人が出ている動画（`sho` `kagetsu` `rou` `rai`） |
 | `videos/dytica.json` | 2人以上が出ている動画 |
 | `videos/all.json` | すべての動画（「全員」と検索用） |
+| `videos/month/2026-10.json` など | その月の動画（カレンダー用。動画のある月だけ） |
+| `combos.json` | 組み合わせ（ペア28組・Oriens・Dytica・MECHATU-A）ごとの記録。メンバーのページ用。数え方は export/build.js の buildCombos |
 | `songs.json` | 4人の誰かが歌っている楽曲（歌ってみた・オリジナル） |
 | `report.json` | 点検の結果 |
 | `cache/hosts.json` | 他枠の持ち主の名前の控え（書き出しが次回に使う。サイトは使わない） |
