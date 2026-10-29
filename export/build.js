@@ -39,7 +39,8 @@ const PAGES_URL = (process.env.PAGES_URL || '').replace(/\/?$/, '/');
 const SOURCES = {
   dytica:   { label: 'Dytica のシート（動画）',       id: '1Zh1XKg8B_j59gdfsCI9GVmPhKPFHjGb086dmbGjl5LY', gid: '1072447368' },
   showcase: { label: 'ショウケースのシート（動画情報）', id: '1S9GmmMs6Rt3hMra3RW8Ijveh61dJg7-iCwFubJPyzJU', gid: '772496731' },
-  songs:    { label: 'MECHATU-NE ARCHIVE（楽曲）',     url: 'https://mechatu-ne-archive.netlify.app/music_data.json' },
+  /* ⚠️ MECHATU-NE は 2026-10-25 に独自ドメインへ移った。古い netlify.app は更新が止まっていて（新しい曲が載らない）、2026-11-30 に閉じる */
+  songs:    { label: 'MECHATU-NE ARCHIVE（楽曲）',     url: 'https://mechatu-ne-archive.com/music_data.json' },
   /* ディスコグラフィ。ショウのぶんはショウケースのシートから読む（動画と同じ。決めたこと.md の2章）。
      ほかの3人のぶんは Dytica のシートの「ディスコグラフィ」タブ（列は同じ＋「参加」）。
      ⚠️ タブを作り直したら gid も変わる（シートの URL の #gid= のあとの数字）。空なら読まない */
@@ -61,20 +62,22 @@ const SOURCES = {
    並びは MECHATU-NE ARCHIVE と同じ（Oriens → Dytica、ユニットの中も MECHATU-NE の順）。データの m もこの順に並べる。
    色（mark）は非公式 Wiki の MECHATU-A のページの「カラーコード」（MECHATU-NE とも同じ）。
    文字の色（textLight／textDark）は、明るい表示・暗い表示の地の色に対して 4.5:1 以上になるよう、元の色に黒を混ぜたり明るくしたりして作った。
+   2026-10-29 に、サイトの地の色を MECHATU-NE と同じ紙の色（明るい表示 #f4f2ee・暗い表示 #0d1014、カード #fffefb・#171a21）に変えたので、
+   その地でも 4.6:1 以上になるよう、明るい表示の6人（赤城・宇佐美・緋八・伊波・星導・叢雲）を3〜7% 濃くし、暗い表示の小柳を4% 明るくした（色合いは同じ）
    チャンネルID は にじチェッカーのライバー一覧（radar/index.json）で確かめた。 */
 const UNITS = [
   { id: 'oriens', name: 'Oriens', members: ['wen', 'rito', 'ittetsu', 'mana'] },
   { id: 'dytica', name: 'Dytica', members: ['rai', 'rou', 'sho', 'kagetsu'] },
 ];
 const MEMBERS = [
-  { key: 'wen',     short: 'ウェン',   name: '赤城ウェン',   unit: 'oriens', channelId: 'UC1vawzfbCnRpHT9SJ5pHlHw', mark: '#FF8C9B', textLight: '#A65B65', textDark: '#FF8C9B', onMark: '#1A1A22' },
-  { key: 'rito',    short: 'リト',     name: '宇佐美リト',   unit: 'oriens', channelId: 'UCambvP8yxNDot4FzQc9cgiw', mark: '#FAC31E', textLight: '#8C6D11', textDark: '#FAC31E', onMark: '#1A1A22' },
+  { key: 'wen',     short: 'ウェン',   name: '赤城ウェン',   unit: 'oriens', channelId: 'UC1vawzfbCnRpHT9SJ5pHlHw', mark: '#FF8C9B', textLight: '#9F5761', textDark: '#FF8C9B', onMark: '#1A1A22' },
+  { key: 'rito',    short: 'リト',     name: '宇佐美リト',   unit: 'oriens', channelId: 'UCambvP8yxNDot4FzQc9cgiw', mark: '#FAC31E', textLight: '#866910', textDark: '#FAC31E', onMark: '#1A1A22' },
   { key: 'ittetsu', short: 'イッテツ', name: '佐伯イッテツ', unit: 'oriens', channelId: 'UCy8P3o5XlMpJGQY4WugzdNA', mark: '#8C4664', textLight: '#8C4664', textDark: '#BB7895', onMark: '#FFFFFF' },
-  { key: 'mana',    short: 'マナ',     name: '緋八マナ',     unit: 'oriens', channelId: 'UCqXxS-9x9Ha_UiH6hG4kh5Q', mark: '#64C8F0', textLight: '#3C7890', textDark: '#64C8F0', onMark: '#1A1A22' },
-  { key: 'rai',     short: 'ライ',     name: '伊波ライ',     unit: 'dytica', channelId: 'UCz89MGFBrAqwJ5xMr5weSuA', mark: '#DCFF50', textLight: '#667D00', textDark: '#DCFF50', onMark: '#1A1A22' },
-  { key: 'rou',     short: 'ロウ',     name: '小柳ロウ',     unit: 'dytica', channelId: 'UC6WFKwYptsxVue56Lx218vg', mark: '#5A5FAA', textLight: '#5A5FAA', textDark: '#7278C6', onMark: '#FFFFFF' },
-  { key: 'sho',     short: 'ショウ',   name: '星導ショウ',   unit: 'dytica', channelId: 'UCgZ0pH7j6c9z-pkOG3PYw1Q', mark: '#A58CDC', textLight: '#7F68B0', textDark: '#A58CDC', onMark: '#1A1A22' },
-  { key: 'kagetsu', short: 'カゲツ',   name: '叢雲カゲツ',   unit: 'dytica', channelId: 'UChdY64fJb14Nfnbs8EGdQig', mark: '#6EB487', textLight: '#42815A', textDark: '#6EB487', onMark: '#1A1A22' },
+  { key: 'mana',    short: 'マナ',     name: '緋八マナ',     unit: 'oriens', channelId: 'UCqXxS-9x9Ha_UiH6hG4kh5Q', mark: '#64C8F0', textLight: '#3A748C', textDark: '#64C8F0', onMark: '#1A1A22' },
+  { key: 'rai',     short: 'ライ',     name: '伊波ライ',     unit: 'dytica', channelId: 'UCz89MGFBrAqwJ5xMr5weSuA', mark: '#DCFF50', textLight: '#5F7400', textDark: '#DCFF50', onMark: '#1A1A22' },
+  { key: 'rou',     short: 'ロウ',     name: '小柳ロウ',     unit: 'dytica', channelId: 'UC6WFKwYptsxVue56Lx218vg', mark: '#5A5FAA', textLight: '#5A5FAA', textDark: '#787DC8', onMark: '#FFFFFF' },
+  { key: 'sho',     short: 'ショウ',   name: '星導ショウ',   unit: 'dytica', channelId: 'UCgZ0pH7j6c9z-pkOG3PYw1Q', mark: '#A58CDC', textLight: '#7762A5', textDark: '#A58CDC', onMark: '#1A1A22' },
+  { key: 'kagetsu', short: 'カゲツ',   name: '叢雲カゲツ',   unit: 'dytica', channelId: 'UChdY64fJb14Nfnbs8EGdQig', mark: '#6EB487', textLight: '#3E7955', textDark: '#6EB487', onMark: '#1A1A22' },
 ];
 const SHO = 'sho';   // ショウのぶんはショウケースから読む（開始時刻を Holodex で補うのもショウだけ）
 /* ユニットのチャンネル（Oriens）の枠の名前をそろえる。取り込みは「Oriens」と書くが、
@@ -141,6 +144,8 @@ async function main() {
   // ⚠️ 同じ企画のまとめ（開始時刻と長さで重なりを見る）より前に補うこと
   await fillShoStarts(videos, previous);
   videos.forEach(v => { if (v.o && UNIT_HOSTS[nameKey(v.o)]) v.o = UNIT_HOSTS[nameKey(v.o)]; });
+  // ⚠️ クリップを決める前にすること（ほかのライバーの Shorts はクリップにする決まりのため）
+  await recheckShorts(videos, previous);
   /* クリップ（cl: 1）。Dytica のシートの「クリップ」の列に ○ があればクリップ、× があればクリップにしない（持ち主の判断がいちばん先。2026-10-29）。
      空・? のときは自動で決める：本人のチャンネル以外で投稿された、配信ではない動画（動画・Shorts）のうち、次のどれかに当たるもの。
      - 切り抜きのチャンネル（にじさんじ公式切り抜きチャンネル。CLIP_HOSTS）の動画
@@ -166,6 +171,9 @@ async function main() {
   if (unsure) note('クリップにするか、まだ選んでいない行（クリップの列が「?」）：' + unsure + ' 行。自動で決めて出しています');
   videos.forEach(v => { delete v.clipUnsure; });
   const groups = groupSameCollab(videos);
+  // ⚠️ 同じ企画のまとめ（p）のあとにすること。別視点は1回と数える
+  markSameGames(videos);
+  await markSameThumbs(videos, songs, previous);
 
   // ── 件数が大きく減っていないか ──
   const counts = { videos: videos.length, clips: videos.filter(v => v.cl).length, songs: songs.length, discography: discography.length, articles: articles.length };
@@ -230,11 +238,11 @@ async function readJson(key) {
 
 // 公開中の meta.json（前回の件数）・report.json（前回の点検）・他枠の持ち主の名前の控え。無くても止めない（初回は無い）
 async function readPrevious() {
-  const prev = { meta: null, report: null, hosts: {}, discography: null, articles: null, holodex: null, gone: null };
+  const prev = { meta: null, report: null, hosts: {}, discography: null, articles: null, holodex: null, gone: null, shorts: null, thumbs: null };
   readPrevious.last = prev;
   if (args.prev) {   // 試すとき：前回の公開の代わりに、手元のフォルダ（前回の out/）を読む
     const read = f => { try { return JSON.parse(fs.readFileSync(path.join(args.prev, f), 'utf8')); } catch (e) { return null; } };
-    prev.meta = read('meta.json'); prev.report = read('report.json'); prev.hosts = read('cache/hosts.json') || {}; prev.discography = read('discography.json'); prev.articles = read('articles.json'); prev.holodex = read('cache/holodex-sho.json'); prev.gone = read('cache/gone.json');
+    prev.meta = read('meta.json'); prev.report = read('report.json'); prev.hosts = read('cache/hosts.json') || {}; prev.discography = read('discography.json'); prev.articles = read('articles.json'); prev.holodex = read('cache/holodex-sho.json'); prev.gone = read('cache/gone.json'); prev.shorts = read('cache/shorts.json'); prev.thumbs = read('cache/thumbs.json');
     return prev;
   }
   if (!PAGES_URL || FROM) return prev;
@@ -245,6 +253,8 @@ async function readPrevious() {
   try { prev.articles = JSON.parse(await fetchText(PAGES_URL + 'articles.json?t=' + Date.now())); } catch (e) {}
   try { prev.holodex = JSON.parse(await fetchText(PAGES_URL + 'cache/holodex-sho.json?t=' + Date.now())); } catch (e) {}
   try { prev.gone = JSON.parse(await fetchText(PAGES_URL + 'cache/gone.json?t=' + Date.now())); } catch (e) {}
+  try { prev.shorts = JSON.parse(await fetchText(PAGES_URL + 'cache/shorts.json?t=' + Date.now())); } catch (e) {}
+  try { prev.thumbs = JSON.parse(await fetchText(PAGES_URL + 'cache/thumbs.json?t=' + Date.now())); } catch (e) {}
   readPrevious.last = prev;
   return prev;
 }
@@ -304,6 +314,8 @@ function parseDytica(rows) {
   if (report.errors.length) return [];
   /* 「クリップ」の列（2026-10-29 に足した）。⚠️ 無くても止めないこと（Apps Script の setupVideoSheet で足すまでは無い） */
   col['クリップ'] = rows[0].map(h => String(h).trim()).indexOf('クリップ');
+  // 「ゲーム」の列（Holodex のゲーム名。取り込みが入れる）。同じゲームの配信を見つけるのに使う。⚠️ 無くても止めないこと
+  col['ゲーム'] = rows[0].map(h => String(h).trim()).indexOf('ゲーム');
   const out = [];
   const seen = {};
   parseDytica.crossed = new Set();   // × の動画（ショウケースから入ってこないよう、mergeVideos で使う）
@@ -354,6 +366,8 @@ function parseDytica(rows) {
 
     const cat = get('カテゴリ'); if (cat) v.g = cat;
     v.k = kindOf(get('種別'), 'dytica', rowNo, id);
+    const game = col['ゲーム'] >= 0 ? get('ゲーム') : '';
+    if (game) v.gt = game;
     // クリップの印：○＝クリップにする（1）／×＝しない（0）／空・?＝自動
     const clip = col['クリップ'] >= 0 ? get('クリップ') : '';
     if (isCircle(clip)) v.clipMark = 1;
@@ -534,6 +548,93 @@ async function dropGoneVideos(videos, previous) {
   return videos.filter(v => !cache.ids[v.i]);
 }
 
+/* 「Shorts」の動画を、YouTube でもう一度確かめる（2026-10-29、持ち主の希望）。
+   取り込み（Apps Script）は、3分以内の動画の youtube.com/shorts/動画ID を開いてみて、はっきりしない返事のときは Shorts とみなしている。
+   Google のサーバーからだと、はっきりしない返事が多いらしく、Shorts でない動画が Shorts になっていた
+   （2026-10-29 に手元で確かめた：シートの「Shorts」1,133行のうち56行が Shorts ではなかった。41行は公式チャンネルの告知・PV）。
+   - youtube.com/shorts/動画ID がそのまま開ければ Shorts、ふつうの再生ページ（/watch）へ転送されれば Shorts ではない（「動画」として出す）
+   - 確かめた結果は cache/shorts.json に控え、次からは新しい動画だけを確かめる（Shorts かどうかは、あとから変わらないため）
+   - ⚠️ はっきりしない返事（同意画面への転送・混み合いなど）のときは、シートのまま（次の回にまた確かめる）
+   - ⚠️ 一度に「Shorts ではない」が多すぎるとき（20本かつ確かめた数の3割を超える）は、おかしいとみなして直さない（気になることで知らせる）
+   - シートの「種別」の列は書き換えない。直した数は「お知らせ」に出す */
+async function recheckShorts(videos, previous) {
+  const cache = Object.assign({}, (previous && previous.shorts) || {});   // 動画ID → 1（Shorts）／0（Shorts ではない）
+  if (FROM && fs.existsSync(path.join(FROM, 'shorts.json'))) Object.assign(cache, JSON.parse(fs.readFileSync(path.join(FROM, 'shorts.json'), 'utf8')));
+  if (!FROM) {
+    const ask = videos.filter(v => v.k === 'S' && !(v.i in cache)).map(v => v.i);
+    const found = {};
+    const queue = ask.slice();
+    await Promise.all(Array.from({ length: 16 }, async () => {
+      while (queue.length) {
+        const id = queue.shift();
+        try {
+          const res = await fetch('https://www.youtube.com/shorts/' + id, { method: 'HEAD', redirect: 'manual', signal: AbortSignal.timeout(15000),
+            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0 Safari/537.36' } });
+          const loc = res.headers.get('location') || '';
+          if (res.status === 200) found[id] = 1;
+          else if (res.status >= 300 && res.status < 400 && /\/watch/.test(loc)) found[id] = 0;
+        } catch (e) { /* つながらなかったものは、次の回に */ }
+      }
+    }));
+    const notShorts = Object.values(found).filter(x => x === 0).length;
+    if (notShorts > Math.max(20, ask.length * 0.3)) {
+      warn('Shorts を確かめ直したところ、「Shorts ではない」が一度に ' + notShorts + ' 本ありました（確かめた ' + ask.length + ' 本）。YouTube の返事がおかしいかもしれないので、直していません');
+    } else {
+      Object.assign(cache, found);
+    }
+    console.log('Shorts を確かめ直しました：' + ask.length + ' 本・Shorts ではなかった ' + notShorts + ' 本・はっきりしなかった ' + (ask.length - Object.keys(found).length) + ' 本');
+  }
+  const have = new Set(videos.map(v => v.i));
+  Object.keys(cache).forEach(id => { if (!have.has(id)) delete cache[id]; });
+  let fixed = 0;
+  videos.forEach(v => { if (v.k === 'S' && cache[v.i] === 0) { v.k = 'V'; fixed++; } });
+  if (fixed) note('シートで「Shorts」でも、YouTube では Shorts ではなかった動画 ' + fixed + ' 本を「動画」として出しました（シートはそのまま）');
+  recheckShorts.cache = cache;
+}
+
+/* 同じ日に同じサムネイルの絵が並ばないようにする印（dt＝先に出る同じ絵の動画ID。2026-10-29、持ち主の希望）。
+   カレンダーのマスに、同じ絵が2回出ていた。小柳が同じ日の2本の配信に同じサムネイルを使った日（10/12・10/18）と、
+   アルバムの曲が同じジャケットで並んだ日（10/24 に5曲）。サイトは、先の絵がマスに出ているときだけ、dt のある絵を出さない。
+   - 絵を比べるのは、同じ日に同じ枠の人の動画が2本以上あるときと、同じ日の楽曲だけ（全部の絵を読むと重いため）
+   - 絵の中身の印は cache/thumbs.json に控え、次からは新しい動画だけを読む
+   - ⚠️ 読めなかった絵は比べない（印を付けない） */
+async function markSameThumbs(videos, songs, previous) {
+  const cache = Object.assign({}, (previous && previous.thumbs) || {});   // 動画ID → 絵の中身の印
+  if (FROM && fs.existsSync(path.join(FROM, 'thumbs.json'))) Object.assign(cache, JSON.parse(fs.readFileSync(path.join(FROM, 'thumbs.json'), 'utf8')));
+  // 比べる組：同じ日・同じ枠の人の動画（クリップを除く）と、同じ日の楽曲
+  const groups = {};
+  videos.forEach(v => { if (!v.cl) (groups[v.d + '|' + (v.h || v.o || '')] = groups[v.d + '|' + (v.h || v.o || '')] || []).push(v); });
+  songs.forEach(x => { if (x.d) (groups[x.d + '|♪'] = groups[x.d + '|♪'] || []).push(x); });
+  const targets = Object.values(groups).filter(l => l.length >= 2);
+  if (!FROM) {
+    const ask = [...new Set(targets.flat().map(v => v.i))].filter(id => !(id in cache));
+    const queue = ask.slice();
+    await Promise.all(Array.from({ length: 16 }, async () => {
+      while (queue.length) {
+        const id = queue.shift();
+        try {
+          const res = await fetch('https://i.ytimg.com/vi/' + id + '/mqdefault.jpg', { signal: AbortSignal.timeout(15000) });
+          if (res.ok) cache[id] = crypto.createHash('sha1').update(Buffer.from(await res.arrayBuffer())).digest('hex').slice(0, 10);
+        } catch (e) { /* 読めなかった絵は比べない */ }
+      }
+    }));
+    console.log('サムネイルの絵を読みました：' + ask.length + ' 本');
+  }
+  let marked = 0;
+  targets.forEach(list => {
+    const first = {};
+    list.slice().sort((a, b) => (a.s || '').localeCompare(b.s || '')).forEach(v => {
+      const h = cache[v.i];
+      if (!h) return;
+      if (first[h]) { v.dt = first[h]; marked++; } else first[h] = v.i;
+    });
+  });
+  const keep = new Set(targets.flat().map(v => v.i));
+  Object.keys(cache).forEach(id => { if (!keep.has(id)) delete cache[id]; });
+  console.log('同じ日に同じサムネイルの絵：' + marked + ' 本');
+  markSameThumbs.cache = cache;
+}
+
 // サムネイルの返事（200・404 など）。つながらなかったものは 0。16本ずつ並べて問い合わせる
 async function thumbStatuses(ids) {
   const out = {};
@@ -603,7 +704,8 @@ async function fillShoStarts(videos, previous) {
         const list = await holodexPages('/channels/' + MEMBERS.find(m => m.key === SHO).channelId + '/' + kind, full ? 80 : 2, key);
         list.forEach(h => {
           const t = Date.parse(h.start_actual || '');
-          if (!isNaN(t)) cache.items[h.id] = [Math.round(t / 1000), h.duration || 0];
+          // 3つ目はゲーム名（2026-10-29 に足した。同じゲームの配信を見つけるため）。前の控えには無いので、週1回の取り直しで入る
+          if (!isNaN(t)) cache.items[h.id] = [Math.round(t / 1000), h.duration || 0, h.topic_id || ''];
         });
       }
       if (full) cache.fullAt = new Date().toISOString();
@@ -616,7 +718,9 @@ async function fillShoStarts(videos, previous) {
   let filled = 0;
   const mismatch = [];
   videos.forEach(v => {
-    if (v.s || v.k !== 'L' || v.m.indexOf(SHO) === -1) return;
+    if (v.k !== 'L' || v.m.indexOf(SHO) === -1) return;
+    if (!v.gt && cache.items[v.i] && cache.items[v.i][2]) v.gt = cache.items[v.i][2];
+    if (v.s) return;
     const h = cache.items[v.i];
     if (!h || !h[0]) return;
     const jst = new Date(h[0] * 1000 + 9 * 3600e3).toISOString();
@@ -659,21 +763,23 @@ async function holodexPages(apiPath, maxPages, key) {
    1) 8人の枠どうし：どちらも8人のだれかの枠の配信で、枠の持ち主が違い、お互いの出演に相手の枠の持ち主が入っていて、
       開始時刻があれば10分以上重なる（無ければ同じ日）。
    2) ほかの人の枠（2026-10-29 に足した。持ち主の判断。他視点がすべてアーカイブ・カレンダーに並んでいたため）：
-      8人のだれかの枠の配信と時間が重なっていて、その人が出ていて、次のどちらかに当たるもの。
-      - 短いほうの9割以上が重なり、長いほうの6割以上が重なる（長さも時間もほぼ同じ）
-      - 短いほうの6割以上が重なり、題名に同じハッシュタグか【】の言葉がある（大会の公式の配信と、本人の試合の視点など）
-      1人が同じ時間に2つの配信に出ることはないので「明らかに同じ企画」と言える（これからの配信と同じ考え）。
-      開始時刻の差では絞らない（2026-10-29 持ち主の希望）。「自主練→23時から顔合わせ」のように、ほかの人が2時間早く始めた配信もまとめるため。
-      ⚠️ 1本の他枠が、同じ人の枠の2本に当たるときは、重なりが長いほうだけにまとめる（同じ人の別々の配信が、他枠を通して1つにまとまらないように）
-      実データ（2026-10-29）で確かめた：他枠の配信1,630本のうち1,056本がまとまる（開始が30分以内に絞ったときは931本）。
-      大会の各視点・同じゲームのコラボ・にじARK のような長い企画の各視点などで、ほぼ同じ企画だった。
-      重なりが少ないものには、短いプレミア公開や、配信の合間にほかの人の枠に出ただけのもの（別の企画）が混ざっていた。
-      ⚠️ 「短いほうの9割」だけで決めないこと。伊波の41分の新衣装お披露目が、同じ時刻に始まった Rei7 さんの11時間の自主練
-      （伊波は2時間後の顔合わせから出た）と同じ企画になった。顔合わせの配信（長いほうの8割が重なる）とはまとまる
+      8人のだれかの枠の配信と、配信している時間が10分以上重なっていて、その人が出ている（Holodex のメンション・題名の名前）もの。
+      開始時刻の差では見ない（2026-10-29 持ち主の希望。本人の10時間の配信の途中から始まったチーム練習の各視点も、他視点にするため）。
+      1人が同じ時間に2つの配信に出ることはないので、同じ企画と言える（これからの配信と同じ考え）。ただし次のときは除く：
+      - ゲーム名（シートの「ゲーム」の列）が両方分かっていて違うもの。本人のゲームの配信の最中に流れた公式番組の初回放送や、
+        合間にほかの人の配信へ電話で少し出ただけのものが、重なり＋メンションだけだと他視点になった（2026-10-29 のデータで、増えた80本のうち十数本）
+      - ゲーム名がどちらか分からないもの（公式番組・ショウケースから来た他枠など）は、重なり方で見る：
+        短いほうの9割以上が重なり長いほうの6割以上も重なる、または、短いほうの6割以上が重なり題名に同じハッシュタグか【】の言葉がある
+      - 逆凸・凸待ち（ゲーム名が totsu か、題名に「逆凸」「凸待ち」）。本人は電話で少し出ただけのため
+      ⚠️ 1本の他枠が、同じ人の枠の2本に当たるときは、重なりが長いほうだけにまとめる（同じ人の別々の配信が、他枠を通して1つにまとまらないように）。
+         伊波の41分の新衣装お披露目と、同じ時刻に始まった Rei7 さんの11時間の自主練（伊波は2時間後の顔合わせから出た）も、これで顔合わせのほうにまとまる
+      実データ（2026-10-29）で確かめた：他枠の配信1,630本のうち1,086本がまとまる。10/21 の小柳の「視聴者カスタム」（10時間）と、
+      5時間後に始まった本間ひまわりさん・五十嵐梨花さんのチーム練習もまとまる
    ⚠️ ほかの人の枠どうしはまとめない（8人のだれかが出ているだけでは、同じ企画と言い切れないため）
    ⚠️ 代表は8人の枠から選ぶ（ほかの人の枠を代表にしない）。8人の並び順でいちばん前の人の枠。
       サイトの groupSameCollab（src/videos.js）と buildCombos も同じ並べ方にすること */
 const hostRank = v => (v.h ? memberOrder(v.h) : 99);
+const TOTSU_TITLE = /逆凸|凸待ち/;
 function groupSameCollab(videos) {
   const parent = {};
   const hosts = {};   // まとまりの代表の印 → その中にある8人の枠の持ち主
@@ -718,12 +824,17 @@ function groupSameCollab(videos) {
   const links = [];
   guests.forEach(g => {
     const best = {};   // 8人の key → いちばん長く重なる本人の枠
+    if (g.gt === 'totsu' || TOTSU_TITLE.test(g.t)) return;
     own.forEach(o => {
       if (g.m.indexOf(o.h) === -1) return;
       const ov = overlap(g, o) / 1000;
-      if (ov <= 0) return;
-      const ofShort = ov / Math.min(g.l, o.l), ofLong = ov / Math.max(g.l, o.l);
-      if (!((ofShort >= 0.9 && ofLong >= 0.6) || (ofShort >= 0.6 && shareTitleWord(g.t, o.t)))) return;
+      if (ov < 10 * 60) return;
+      if (g.gt && o.gt) {
+        if (g.gt !== o.gt) return;   // 同じゲームなら、重なっていて出ているだけでよい
+      } else {
+        const ofShort = ov / Math.min(g.l, o.l), ofLong = ov / Math.max(g.l, o.l);
+        if (!((ofShort >= 0.9 && ofLong >= 0.6) || (ofShort >= 0.6 && shareTitleWord(g.t, o.t)))) return;
+      }
       if (!best[o.h] || ov > best[o.h].ov) best[o.h] = { o, ov };
     });
     Object.values(best).forEach(x => links.push({ g, o: x.o, score: x.ov / Math.max(g.l, x.o.l) }));
@@ -749,6 +860,35 @@ function groupSameCollab(videos) {
   });
   console.log('同じ企画の別視点：' + count + ' 組（ほかの人の枠から ' + linked + ' 本）');
   return count;
+}
+
+/* 同じゲームの配信（gm）。動画の詳細カードに「同じゲームの配信」として出す（2026-10-29、持ち主の希望。
+   MECHATU-NE で、同じ曲を歌ったほかの枠が出るのと同じ考え）。
+   ゲームは Dytica のシートの「ゲーム」の列（Holodex のゲーム名）。ショウのぶんは Holodex の控えから補う（fillShoStarts）。
+   主に単発のゲームを対象にする：配信（k が L）で、同じ企画の別視点を1回と数えて、2〜15回遊ばれたゲームだけ。
+   2026-10-29 のデータで数えた：ゲームの種類526のうち、2〜15回のものが295種類（2〜3回141・4〜6回96・7〜10回41・11〜15回17）。
+   ⚠️ たくさん遊ばれているゲーム（16回以上）は入れないこと。ストーリーに関係なく繰り返し遊ぶもの（FPS・格闘ゲームなど）は、
+      同じゲームの配信が何百本も並んで役に立たないため（スト6 424回・Apex 333回・VALORANT 254回・Overwatch 54回）
+   ⚠️ 回数が少なくても、繰り返し遊ぶ種類のゲーム（REPEAT_GAMES）と、ゲームではないもの（NON_GAME_TOPICS）は入れない */
+const GAME_MAX_PLAYS = 15;
+const REPEAT_GAMES = new Set(['apex', 'valorant', 'Street_Fighter', 'Overwatch', 'Rainbow_Six', 'PUBG', 'Fortnite', 'Tarkov', 'battlefield',
+  'Marvel_Rivals', 'XDefiant', 'The_Finals', 'Tekken', 'smash', 'League_of_Legends', 'eFootball', 'FIFA', 'Mahjong', 'Mario_Kart', 'Splatoon',
+  'fallguys', 'Identity_V', 'Shadowverse', 'Pokemon_Trading_Card_Game_Pocket', 'uno', 'GTA', 'minecraft', 'ark', 'Rust']);
+const NON_GAME_TOPICS = new Set(['talk', 'morning', 'singing', '3D_Stream', 'watchalong', 'Birthday', 'totsu', 'Anniversary', 'Cooking_Stream',
+  'Superchat_Reading', 'Outfit_Reveal', 'unboxing', 'announce', 'mukbang', 'celebration', 'Debut_Stream', 'drawing', 'asmr', 'membership',
+  'membersonly', 'Teaser', 'Review', 'Vlog', 'Animation', 'Music_Cover', 'Shopping', 'Ranking', 'Musical_Instrument', 'endurance', 'Gathering',
+  'Quiz', 'TRPG', 'Situation_puzzle', 'Horse_racing', 'Language_learning', 'Fortune_telling', 'Personality_Test', 'CalorieMate']);
+function markSameGames(videos) {
+  const plays = {};
+  const target = v => v.gt && v.k === 'L' && !v.cl && !REPEAT_GAMES.has(v.gt) && !NON_GAME_TOPICS.has(v.gt);
+  videos.forEach(v => { if (target(v)) (plays[v.gt] = plays[v.gt] || new Set()).add(v.p || v.i); });
+  let n = 0;
+  videos.forEach(v => {
+    const k = plays[v.gt] ? plays[v.gt].size : 0;
+    if (target(v) && k >= 2 && k <= GAME_MAX_PLAYS) { v.gm = v.gt; n++; }
+    delete v.gt;
+  });
+  console.log('同じゲームの配信：' + Object.keys(plays).filter(g => plays[g].size >= 2 && plays[g].size <= GAME_MAX_PLAYS).length + ' 種類・' + n + ' 本');
 }
 
 /* 題名に同じハッシュタグか【】の中の言葉があるか（同じ企画かを見分ける手がかり）。
@@ -991,12 +1131,19 @@ function finish(data) {
   Object.keys(byMonth).sort().forEach(ym => write('videos/month/' + ym + '.json', byMonth[ym]));
   // 組み合わせの数（メンバーのページで使う）。⚠️ ページを開くたびに全員ぶんを読んで数えないで済むよう、ここで先に数える
   write('combos.json', buildCombos(vids, data.songs));
+  /* 同じゲームの配信（動画の詳細カードで使う）。ゲーム名 → その配信（動画の形のまま。新しい順）。
+     ⚠️ 詳細カードを開くたびに全員ぶん（videos/all.json）を読まないで済むよう、対象のゲームの配信だけをここにまとめる */
+  const games = {};
+  vids.forEach(v => { if (v.gm) (games[v.gm] = games[v.gm] || []).push(v); });
+  write('games.json', games);
   write('songs.json', data.songs);
   write('discography.json', data.discography);
   write('articles.json', data.articles);
   write('cache/hosts.json', fillGuestHosts.cache || {});
   write('cache/holodex-sho.json', fillShoStarts.cache || { fullAt: '', items: {} });
   write('cache/gone.json', dropGoneVideos.cache || { fullAt: '', ids: {} });
+  write('cache/shorts.json', recheckShorts.cache || {});
+  write('cache/thumbs.json', markSameThumbs.cache || {});
 
   const meta = {
     generatedAt: now,
