@@ -92,6 +92,13 @@ const CLIP_HOSTS = new Set(['にじさんじ公式切り抜きチャンネル'])
    ⚠️ 「まとめ」は入れないこと。ショウケースでは「切り抜き」と一緒にしか出てこない一方、こちらのデータでは
       #にじクイ のクイズ動画（公式の企画。クリップにしないと持ち主が決めた）や、ほかの人の「〇日目まとめ」に当たった */
 const CLIP_TITLE = /切り?抜き|【漫画】|にじさんじハイライト/;
+/* ほかのライバーのチャンネルの Shorts でも、クリップにしない題名の言葉（2026-10-29）。踊ってみた・歌ってみたの Shorts は、
+   切り抜きではなくその人の作品のため（夕陽リリさんと伊波の踊ってみた、#OBF のダンス、戌亥とこさんと宇佐美の cover など）。
+   2026-10-29 のデータで、ほかのライバーの Shorts 121本のうち29本が当たり、92本がクリップになった。
+   ⚠️ 企画の Shorts（森中花咲さんの「究極の二択」など）は言葉では見分けられない。持ち主がシートのクリップの列で × を打つ */
+const NOT_CLIP_TITLE = /踊ってみた|ダンス|dance|歌ってみた|cover|music ?video|#OBF/i;
+// にじさんじ公式チャンネル。ここの Shorts は自動ではクリップにしない（上の決まりの例外）
+const OFFICIAL_HOSTS = new Set(['にじさんじ']);
 const KEY_BY_SHORT = {}, KEY_BY_NAME = {};
 MEMBERS.forEach(m => { KEY_BY_SHORT[m.short] = m.key; KEY_BY_NAME[nameKey(m.name)] = m.key; });
 
@@ -129,15 +136,20 @@ async function main() {
   // ── まとめる ──
   const songs = buildSongs(songsData);
   const songIds = new Set(songs.map(s => s.i));
-  const videos = mergeVideos(dy, sc.concat(scClips), songIds);
+  const videos = await dropGoneVideos(mergeVideos(dy, sc.concat(scClips), songIds), previous);
   await fillGuestHosts(videos, previous);
   // ⚠️ 同じ企画のまとめ（開始時刻と長さで重なりを見る）より前に補うこと
   await fillShoStarts(videos, previous);
   videos.forEach(v => { if (v.o && UNIT_HOSTS[nameKey(v.o)]) v.o = UNIT_HOSTS[nameKey(v.o)]; });
-  /* クリップ（cl: 1）：本人のチャンネル以外で投稿された、配信ではない動画（動画・Shorts）のうち、次のどれかに当たるもの。
+  /* クリップ（cl: 1）。Dytica のシートの「クリップ」の列に ○ があればクリップ、× があればクリップにしない（持ち主の判断がいちばん先。2026-10-29）。
+     空・? のときは自動で決める：本人のチャンネル以外で投稿された、配信ではない動画（動画・Shorts）のうち、次のどれかに当たるもの。
      - 切り抜きのチャンネル（にじさんじ公式切り抜きチャンネル。CLIP_HOSTS）の動画
      - ショウケースの「切り抜き」タブにある動画（持ち主が切り抜きとして入れたもの）
      - タイトルに CLIP_TITLE の言葉（「切り抜き」など）があるもの
+     - ほかのライバーのチャンネルの Shorts（2026-10-29、持ち主の判断）。題名に何も付いていない切り抜きが多いため
+       （叶さんの「ジャイロOFFの生き様」など）。ただし題名に NOT_CLIP_TITLE の言葉（踊ってみた・歌ってみたなど）があるものは除く。
+       ⚠️ にじさんじ公式チャンネル（OFFICIAL_HOSTS）の Shorts は入れないこと。告知や企画が多い（2026-10-29 に105本）。
+          クリップにしたいものは、持ち主がシートで ○ を打つ
      ⚠️ ほかのチャンネルの動画は、タイトルで絞ること（2026-10-28 持ち主の判断）。絞らないと、公式の告知の Shorts や企画の動画
      （例：#にじクイ のクイズ動画）までクリップになった（絞る前は390本、そのうち公式のにじさんじが150本）
      サイトではアーカイブ・新着・カレンダーから分けて、「クリップ」のページに出す（2026-10-28、持ち主の判断）。
@@ -145,9 +157,14 @@ async function main() {
      ⚠️ Oriens のユニットのチャンネルの動画はクリップにしない（8人のうち4人のチャンネルのため）。ショウケースの「切り抜き」タブにあっても同じ */
   const unitNames = new Set(Object.values(UNIT_HOSTS));
   videos.forEach(v => {
-    if (!v.h && !unitNames.has(v.o) && v.k !== 'L' && (CLIP_HOSTS.has(v.o) || v.scClip || CLIP_TITLE.test(v.t))) v.cl = 1;
-    delete v.scClip;
+    const auto = !v.h && !unitNames.has(v.o) && v.k !== 'L' && (CLIP_HOSTS.has(v.o) || v.scClip || CLIP_TITLE.test(v.t) ||
+      (v.k === 'S' && !OFFICIAL_HOSTS.has(v.o) && !NOT_CLIP_TITLE.test(v.t)));
+    if (v.clipMark === 1 || (v.clipMark !== 0 && auto)) v.cl = 1;
+    delete v.scClip; delete v.clipMark;
   });
+  const unsure = videos.filter(v => v.clipUnsure).length;
+  if (unsure) note('クリップにするか、まだ選んでいない行（クリップの列が「?」）：' + unsure + ' 行。自動で決めて出しています');
+  videos.forEach(v => { delete v.clipUnsure; });
   const groups = groupSameCollab(videos);
 
   // ── 件数が大きく減っていないか ──
@@ -213,11 +230,11 @@ async function readJson(key) {
 
 // 公開中の meta.json（前回の件数）・report.json（前回の点検）・他枠の持ち主の名前の控え。無くても止めない（初回は無い）
 async function readPrevious() {
-  const prev = { meta: null, report: null, hosts: {}, discography: null, articles: null, holodex: null };
+  const prev = { meta: null, report: null, hosts: {}, discography: null, articles: null, holodex: null, gone: null };
   readPrevious.last = prev;
   if (args.prev) {   // 試すとき：前回の公開の代わりに、手元のフォルダ（前回の out/）を読む
     const read = f => { try { return JSON.parse(fs.readFileSync(path.join(args.prev, f), 'utf8')); } catch (e) { return null; } };
-    prev.meta = read('meta.json'); prev.report = read('report.json'); prev.hosts = read('cache/hosts.json') || {}; prev.discography = read('discography.json'); prev.articles = read('articles.json'); prev.holodex = read('cache/holodex-sho.json');
+    prev.meta = read('meta.json'); prev.report = read('report.json'); prev.hosts = read('cache/hosts.json') || {}; prev.discography = read('discography.json'); prev.articles = read('articles.json'); prev.holodex = read('cache/holodex-sho.json'); prev.gone = read('cache/gone.json');
     return prev;
   }
   if (!PAGES_URL || FROM) return prev;
@@ -227,6 +244,7 @@ async function readPrevious() {
   try { prev.discography = JSON.parse(await fetchText(PAGES_URL + 'discography.json?t=' + Date.now())); } catch (e) {}
   try { prev.articles = JSON.parse(await fetchText(PAGES_URL + 'articles.json?t=' + Date.now())); } catch (e) {}
   try { prev.holodex = JSON.parse(await fetchText(PAGES_URL + 'cache/holodex-sho.json?t=' + Date.now())); } catch (e) {}
+  try { prev.gone = JSON.parse(await fetchText(PAGES_URL + 'cache/gone.json?t=' + Date.now())); } catch (e) {}
   readPrevious.last = prev;
   return prev;
 }
@@ -284,6 +302,8 @@ function parseDytica(rows) {
   const col = headerIndex(rows, ['動画URL', '動画タイトル', '公開日', '開始時刻', '再生時間', '枠', '出演', 'コラボ相手',
     'カテゴリ', '種別', '3D', '歌唱', '確認'], label);
   if (report.errors.length) return [];
+  /* 「クリップ」の列（2026-10-29 に足した）。⚠️ 無くても止めないこと（Apps Script の setupVideoSheet で足すまでは無い） */
+  col['クリップ'] = rows[0].map(h => String(h).trim()).indexOf('クリップ');
   const out = [];
   const seen = {};
   parseDytica.crossed = new Set();   // × の動画（ショウケースから入ってこないよう、mergeVideos で使う）
@@ -334,6 +354,12 @@ function parseDytica(rows) {
 
     const cat = get('カテゴリ'); if (cat) v.g = cat;
     v.k = kindOf(get('種別'), 'dytica', rowNo, id);
+    // クリップの印：○＝クリップにする（1）／×＝しない（0）／空・?＝自動
+    const clip = col['クリップ'] >= 0 ? get('クリップ') : '';
+    if (isCircle(clip)) v.clipMark = 1;
+    else if (isCross(clip)) v.clipMark = 0;
+    else if (/^[?？]$/.test(clip)) v.clipUnsure = 1;
+    else if (clip) rowIssue('dytica', rowNo, 'クリップの印「' + clip + '」が分かりません（○ か × にしてください）。自動で決めました', id);
     if (isCircle(get('3D'))) v.d3 = 1;
     if (isCircle(get('歌唱'))) v.sg = 1;
     out.push(v);
@@ -462,6 +488,70 @@ function mergeVideos(dy, sc, songIds) {
   return list;
 }
 
+/* 消された・非公開になった動画を外す（2026-10-29、持ち主の判断。一度公開して消された動画がカレンダーに残っていた）。
+   YouTube のサムネイル（i.ytimg.com の mqdefault）が 404 なら、見られない動画とみなす。サイトの一覧が出している画像と同じで、
+   消された動画は灰色の「…」の絵になる（見て分かる症状と同じものを見ている）。キーも問い合わせの上限も要らない。
+   - ふだんは公開日が30日以内の動画と、前に見られなかった動画だけ確かめる。週1回は全部確かめる
+     （2026-10-29 に全10,898本で83秒。見られないものは1本＝弦月藤士郎さんの「さよならインターバル」の消された方）
+   - 見られなかった動画は cache/gone.json に控え、次からも外す。確かめて見られるようになっていれば戻す
+   - ⚠️ 404 のときだけ外すこと。つながらない・ほかの返事のときは前回のまま（YouTube の不調でサイトの中身が消えないように）
+   - ⚠️ 1回で新しく見つかった数が多すぎるとき（20本かつ確かめた数の2%を超える）は、おかしいとみなして外さない（気になることで知らせる）
+   - シートの行はそのまま（消さない・× も付けない）。外した動画は「お知らせ」に出す */
+const GONE_RECENT_DAYS = 30;
+const GONE_REFRESH_DAYS = 7;
+async function dropGoneVideos(videos, previous) {
+  const prev = (previous && previous.gone) || {};
+  const cache = { fullAt: prev.fullAt || '', ids: Object.assign({}, prev.ids || {}) };   // 動画ID → 見つけた日
+  if (FROM && fs.existsSync(path.join(FROM, 'gone.json'))) Object.assign(cache.ids, JSON.parse(fs.readFileSync(path.join(FROM, 'gone.json'), 'utf8')).ids || {});
+  const today = new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10);
+  if (!FROM) {
+    const full = !cache.fullAt || Date.now() - Date.parse(cache.fullAt) > GONE_REFRESH_DAYS * 86400e3;
+    const since = new Date(Date.now() + 9 * 3600e3 - GONE_RECENT_DAYS * 86400e3).toISOString().slice(0, 10);
+    const targets = full ? videos : videos.filter(v => v.d >= since || cache.ids[v.i]);
+    const status = await thumbStatuses(targets.map(v => v.i));
+    const found = targets.filter(v => status[v.i] === 404 && !cache.ids[v.i]);
+    const failed = targets.filter(v => !status[v.i]).length;
+    if (found.length > Math.max(20, targets.length * 0.02)) {
+      warn('見られない動画（サムネイルが無い）が一度に ' + found.length + ' 本見つかりました（確かめた ' + targets.length + ' 本）。YouTube の不調かもしれないので、外していません');
+    } else {
+      found.forEach(v => { cache.ids[v.i] = today; });
+    }
+    targets.forEach(v => { if (status[v.i] === 200) delete cache.ids[v.i]; });
+    // 1割以上確かめられなかったときは、全部確かめたことにしない（次の回にやり直す）
+    if (full && failed < targets.length * 0.1) cache.fullAt = new Date().toISOString();
+    console.log('見られない動画を確かめました：' + targets.length + ' 本（' + (full ? '全部' : '最近のもの') + '）・新しく見つかった ' + found.length + ' 本・確かめられなかった ' + failed + ' 本');
+  }
+  // 控えは、いまのデータにある動画のぶんだけ残す（シートから消した動画の分が貯まらないように）
+  const have = new Set(videos.map(v => v.i));
+  Object.keys(cache.ids).forEach(id => { if (!have.has(id)) delete cache.ids[id]; });
+  const gone = videos.filter(v => cache.ids[v.i]);
+  if (gone.length) {
+    note('見られない動画（消された・非公開）' + gone.length + ' 本を外しました：' + gone.slice(0, 20).map(v =>
+      v.d + '「' + v.t.slice(0, 30) + '」' + (v.src === 'dytica' ? '（Dytica のシート ' + v.row + ' 行目）' : v.src === 'showcase' ? '（ショウケース）' : '')).join('、') +
+      (gone.length > 20 ? ' ほか' : '') + '。シートでは確認に × を付けてもよい（付けなくても外れます）');
+  }
+  dropGoneVideos.cache = cache;
+  return videos.filter(v => !cache.ids[v.i]);
+}
+
+// サムネイルの返事（200・404 など）。つながらなかったものは 0。16本ずつ並べて問い合わせる
+async function thumbStatuses(ids) {
+  const out = {};
+  const queue = ids.slice();
+  await Promise.all(Array.from({ length: 16 }, async () => {
+    while (queue.length) {
+      const id = queue.shift();
+      for (let attempt = 0; attempt < 2 && !out[id]; attempt++) {
+        try {
+          const res = await fetch('https://i.ytimg.com/vi/' + id + '/mqdefault.jpg', { method: 'HEAD', signal: AbortSignal.timeout(15000) });
+          out[id] = res.status;
+        } catch (e) { out[id] = 0; }
+      }
+    }
+  }));
+  return out;
+}
+
 /* ショウケースの他枠の行には、枠の持ち主の列が無い。YouTube の oEmbed（キー不要）でチャンネル名を引いて埋める。
    引いた名前は cache/hosts.json に控えて、次回からは問い合わせない（公開中のデータから読む）。
    ⚠️ 引けなくても止めない（枠の名前が空になるだけ）。件数は知らせる。 */
@@ -564,40 +654,116 @@ async function holodexPages(apiPath, maxPages, key) {
   return out;
 }
 
-/* 4人がそれぞれの枠で同じコラボを配信したとき、同じ企画として印（p＝代表の動画ID）を付ける。
-   一覧で4回並ばないよう、画面側で1件にまとめるのに使う（引き継ぎ書の「人数ぶん増えると一覧が埋まる」）。
-   決まり：どちらも Dytica の誰かの枠の配信で、枠の持ち主が違い、お互いの出演に相手の枠の持ち主が入っていて、
-   開始時刻があれば10分以上重なる（無ければ同じ日）。ショウケースの行には開始時刻が無いので、同じ日で見る。 */
+/* 同じ企画の別視点に、同じ印（p＝代表の動画ID）を付ける。一覧・カレンダーでは代表だけを出し、
+   ほかは詳細カードの「ほかの視点」に出す（引き継ぎ書の「人数ぶん増えると一覧が埋まる」）。
+   1) 8人の枠どうし：どちらも8人のだれかの枠の配信で、枠の持ち主が違い、お互いの出演に相手の枠の持ち主が入っていて、
+      開始時刻があれば10分以上重なる（無ければ同じ日）。
+   2) ほかの人の枠（2026-10-29 に足した。持ち主の判断。他視点がすべてアーカイブ・カレンダーに並んでいたため）：
+      8人のだれかの枠の配信と時間が重なっていて、その人が出ていて、次のどちらかに当たるもの。
+      - 短いほうの9割以上が重なり、長いほうの6割以上が重なる（長さも時間もほぼ同じ）
+      - 短いほうの6割以上が重なり、題名に同じハッシュタグか【】の言葉がある（大会の公式の配信と、本人の試合の視点など）
+      1人が同じ時間に2つの配信に出ることはないので「明らかに同じ企画」と言える（これからの配信と同じ考え）。
+      開始時刻の差では絞らない（2026-10-29 持ち主の希望）。「自主練→23時から顔合わせ」のように、ほかの人が2時間早く始めた配信もまとめるため。
+      ⚠️ 1本の他枠が、同じ人の枠の2本に当たるときは、重なりが長いほうだけにまとめる（同じ人の別々の配信が、他枠を通して1つにまとまらないように）
+      実データ（2026-10-29）で確かめた：他枠の配信1,630本のうち1,056本がまとまる（開始が30分以内に絞ったときは931本）。
+      大会の各視点・同じゲームのコラボ・にじARK のような長い企画の各視点などで、ほぼ同じ企画だった。
+      重なりが少ないものには、短いプレミア公開や、配信の合間にほかの人の枠に出ただけのもの（別の企画）が混ざっていた。
+      ⚠️ 「短いほうの9割」だけで決めないこと。伊波の41分の新衣装お披露目が、同じ時刻に始まった Rei7 さんの11時間の自主練
+      （伊波は2時間後の顔合わせから出た）と同じ企画になった。顔合わせの配信（長いほうの8割が重なる）とはまとまる
+   ⚠️ ほかの人の枠どうしはまとめない（8人のだれかが出ているだけでは、同じ企画と言い切れないため）
+   ⚠️ 代表は8人の枠から選ぶ（ほかの人の枠を代表にしない）。8人の並び順でいちばん前の人の枠。
+      サイトの groupSameCollab（src/videos.js）と buildCombos も同じ並べ方にすること */
+const hostRank = v => (v.h ? memberOrder(v.h) : 99);
 function groupSameCollab(videos) {
-  const cand = videos.filter(v => v.h && v.k === 'L' && v.m.length >= 2);
   const parent = {};
+  const hosts = {};   // まとまりの代表の印 → その中にある8人の枠の持ち主
+  const add = v => { if (!parent[v.i]) { parent[v.i] = v.i; hosts[v.i] = new Set(v.h ? [v.h] : []); } };
   const find = x => (parent[x] === x ? x : (parent[x] = find(parent[x])));
-  cand.forEach(v => { parent[v.i] = v.i; });
+  const join = (a, b) => {
+    const ra = find(a.i), rb = find(b.i);
+    if (ra === rb) return;
+    parent[ra] = rb;
+    hosts[ra].forEach(h => hosts[rb].add(h));
+  };
+  // 同じ人の枠が2本入ることになるなら、まとめない（大会の日に、同じ人の準々決勝と準決勝が1つになった）
+  const canJoin = (a, b) => {
+    const ra = find(a.i), rb = find(b.i);
+    return ra === rb || ![...hosts[ra]].some(h => hosts[rb].has(h));
+  };
+  const startOf = v => Date.parse(v.d + 'T' + v.s + ':00+09:00');
+  const span = v => { const t = startOf(v); return [t, t + (v.l || 0) * 1000]; };
+  const overlap = (x, y) => { const [p, q] = span(x), [r, s] = span(y); return Math.min(q, s) - Math.max(p, r); };
+
+  // 1) 8人の枠どうし
+  const cand = videos.filter(v => v.h && v.k === 'L' && v.m.length >= 2);
+  cand.forEach(add);
   const byDate = {};
   cand.forEach(v => { (byDate[v.d] = byDate[v.d] || []).push(v); });
-  const span = v => { const t = Date.parse(v.d + 'T' + v.s + ':00+09:00'); return [t, t + (v.l || 0) * 1000]; };
   Object.values(byDate).forEach(list => {
     for (let a = 0; a < list.length; a++) for (let b = a + 1; b < list.length; b++) {
       const x = list[a], y = list[b];
       if (x.h === y.h || x.m.indexOf(y.h) === -1 || y.m.indexOf(x.h) === -1) continue;
-      if (x.s && y.s && x.l && y.l) {
-        const [p, q] = span(x), [r, s] = span(y);
-        if (Math.min(q, s) - Math.max(p, r) < 10 * 60 * 1000) continue;
-      }
-      parent[find(x.i)] = find(y.i);
+      if (x.s && y.s && x.l && y.l && overlap(x, y) < 10 * 60 * 1000) continue;
+      join(x, y);
     }
   });
+
+  // 2) ほかの人の枠 → 8人の枠（開始時刻と長さが分かるものだけ）
+  const own = videos.filter(v => v.h && v.k === 'L' && v.s && v.l);
+  const guests = videos.filter(v => !v.h && !v.cl && v.k === 'L' && v.s && v.l);
+  /* 当たった組を、長いほうとの重なりが大きい順にまとめる（確かなものから先に）。
+     ⚠️ 同じ人の枠が2本入るまとめ方はしない（canJoin）。大会の公式の長い配信や、相手の視点を通して、
+        同じ人の別々の試合がつながってしまうため（2025-05-05 のマリカにじさんじ杯で、星導の準々決勝と準決勝が1つになった）。
+        ただし 1) の8人の枠どうしは、これまでどおり（配信をやり直した2本が同じ企画にまとまる） */
+  const links = [];
+  guests.forEach(g => {
+    const best = {};   // 8人の key → いちばん長く重なる本人の枠
+    own.forEach(o => {
+      if (g.m.indexOf(o.h) === -1) return;
+      const ov = overlap(g, o) / 1000;
+      if (ov <= 0) return;
+      const ofShort = ov / Math.min(g.l, o.l), ofLong = ov / Math.max(g.l, o.l);
+      if (!((ofShort >= 0.9 && ofLong >= 0.6) || (ofShort >= 0.6 && shareTitleWord(g.t, o.t)))) return;
+      if (!best[o.h] || ov > best[o.h].ov) best[o.h] = { o, ov };
+    });
+    Object.values(best).forEach(x => links.push({ g, o: x.o, score: x.ov / Math.max(g.l, x.o.l) }));
+  });
+  links.sort((a, b) => b.score - a.score);
+  const linkedIds = new Set();
+  links.forEach(({ g, o }) => {
+    add(g); add(o);
+    if (!canJoin(g, o)) return;
+    join(g, o);
+    linkedIds.add(g.i);
+  });
+  const linked = linkedIds.size;
+
   const members = {};
-  cand.forEach(v => { (members[find(v.i)] = members[find(v.i)] || []).push(v); });
+  videos.forEach(v => { if (parent[v.i]) (members[find(v.i)] = members[find(v.i)] || []).push(v); });
   let count = 0;
   Object.values(members).forEach(list => {
     if (list.length < 2) return;
     count++;
-    // 代表は、枠の持ち主が4人の並び順でいちばん前の動画
-    list.sort((a, b) => memberOrder(a.h) - memberOrder(b.h));
+    list.sort((a, b) => hostRank(a) - hostRank(b));
     list.forEach(v => { v.p = list[0].i; });
   });
+  console.log('同じ企画の別視点：' + count + ' 組（ほかの人の枠から ' + linked + ' 本）');
   return count;
+}
+
+/* 題名に同じハッシュタグか【】の中の言葉があるか（同じ企画かを見分ける手がかり）。
+   ⚠️ 「にじさんじ」「vtuber」などは、どの題名にもあるので手がかりにしない */
+const COMMON_TITLE_WORDS = new Set(['にじさんじ', 'nijisanji', 'vtuber', 'shorts', '新人vtuber', 'にじさんじ所属']);
+function titleWords(t) {
+  const s = String(t || '').normalize('NFKC').toLowerCase();
+  const words = [];
+  (s.match(/#[^\s#【】|/]+/g) || []).forEach(w => words.push(w.slice(1)));
+  (s.match(/【[^】]*】/g) || []).forEach(w => words.push(w.slice(1, -1).replace(/\s+/g, '')));
+  return new Set(words.filter(w => w.length >= 2 && !COMMON_TITLE_WORDS.has(w)));
+}
+function shareTitleWord(a, b) {
+  const x = titleWords(a), y = titleWords(b);
+  return [...x].some(w => y.has(w));
 }
 
 /* MECHATU-NE の楽曲のうち、4人の誰かが歌っているもの（歌ってみた・オリジナル）。
@@ -796,7 +962,14 @@ function finish(data) {
     process.exitCode = 1;
     return;
   }
-  const clean = v => { const o = Object.assign({}, v); delete o.src; delete o.row; delete o.ok; return o; };
+  /* ⚠️ コラボ相手（8人以外の一緒に出ている人）の名前は書き出さないこと（2026-10-29 持ち主の判断）。
+        概要欄に書かれていない回もあり、正しく分かりきらないため。「ほかにも出ている人がいる」の印（x）だけ残す
+        （ソロ・コラボの絞り込みと、組み合わせの「その人たちだけ」に使う） */
+  const clean = v => {
+    const o = Object.assign({}, v); delete o.src; delete o.row; delete o.ok;
+    if (o.c) { if (o.c.length) o.x = 1; delete o.c; }
+    return o;
+  };
   const files = {};
   const write = (name, value) => {
     const text = JSON.stringify(value);
@@ -823,6 +996,7 @@ function finish(data) {
   write('articles.json', data.articles);
   write('cache/hosts.json', fillGuestHosts.cache || {});
   write('cache/holodex-sho.json', fillShoStarts.cache || { fullAt: '', items: {} });
+  write('cache/gone.json', dropGoneVideos.cache || { fullAt: '', ids: {} });
 
   const meta = {
     generatedAt: now,
@@ -871,14 +1045,14 @@ function buildCombos(vids, songs) {
       if (!v.p) { mains.push(v); return; }
       if (used[v.p]) return;
       used[v.p] = true;
-      const g = groups[v.p].slice().sort((a, b) => memberOrder(a.h) - memberOrder(b.h));
+      const g = groups[v.p].slice().sort((a, b) => hostRank(a) - hostRank(b));
       mains.push(keys.map(k => g.find(x => x.h === k)).find(Boolean) || g[0]);
     });
     const byYear = {};
     mains.forEach(v => { byYear[v.d.slice(0, 4)] = (byYear[v.d.slice(0, 4)] || 0) + 1; });
     const lives = mains.filter(v => v.k === 'L');
     const from = lives.length ? lives : mains;
-    const onlyLives = lives.filter(v => v.m.length === keys.length && !(v.c && v.c.length));
+    const onlyLives = lives.filter(v => v.m.length === keys.length && !v.x);
     const out = {
       keys, count: mains.length, only: mains.filter(v => v.m.length === keys.length).length, byYear,
       first: pick(from[from.length - 1]), latest: pick(from[0]),               // データは新しい順

@@ -107,14 +107,12 @@ function toItems(raw) {
 
     const hostId = v.channel && v.channel.id;
     const members = new Set();
-    const others = [];
     if (KEY_BY_CHANNEL[hostId]) members.add(KEY_BY_CHANNEL[hostId]);
     const unit = UNIT_CHANNELS.find(u => u.channelId === hostId);
     if (unit && !(v.mentions || []).some(x => KEY_BY_CHANNEL[x.id])) unit.members.forEach(k => members.add(k));
-    (v.mentions || []).forEach(x => {
-      if (KEY_BY_CHANNEL[x.id]) members.add(KEY_BY_CHANNEL[x.id]);
-      else if (x.id !== hostId) { const n = cleanChannelName(x.name); if (n && others.indexOf(n) === -1) others.push(n); }
-    });
+    /* ⚠️ 8人以外の出演者の名前は入れないこと（2026-10-29 持ち主の判断）。Holodex の出演者は抜けや誤りがあり、正しく分かりきらないため。
+          サイトでも出さない（以前は「w/ ○○」と添えていた） */
+    (v.mentions || []).forEach(x => { if (KEY_BY_CHANNEL[x.id]) members.add(KEY_BY_CHANNEL[x.id]); });
     if (!members.size) return;   // 4人のだれも出ていない（ふつうは無い。念のため）
 
     const item = { i: v.id, t: String(v.title || '').trim(), s: new Date(start).toISOString() };
@@ -122,7 +120,6 @@ function toItems(raw) {
     if (KEY_BY_CHANNEL[hostId]) item.h = KEY_BY_CHANNEL[hostId];
     else item.o = unit ? unit.name : (cleanChannelName(v.channel && v.channel.name) || '');
     item.m = MEMBERS.map(m => m.key).filter(k => members.has(k));
-    if (others.length) item.c = others;
     out.push(item);
   });
   return out.sort((a, b) => a.s.localeCompare(b.s) || a.i.localeCompare(b.i));
