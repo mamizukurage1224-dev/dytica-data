@@ -54,12 +54,12 @@ const SOURCES = {
      列は ID・再生リスト名・公開日・動画タイトル・動画URL・チャンネル（2026-10-28 に134本）。読めなくても止めない */
   showcaseClips: { label: 'ショウケースのシート（切り抜き）', id: '1S9GmmMs6Rt3hMra3RW8Ijveh61dJg7-iCwFubJPyzJU', gid: '1764814068' },
   /* ライブ（2026-10-30、持ち主の希望）。「ライブ」は1行＝1公演、「ライブ詳細」は1行＝1項目（セットリスト・関連動画など）。
-     ショウが出ている公演はショウケースのシートが正。ほかのメンバーだけの公演は、Dytica のシートに同じ列のタブを作って入れる（持ち主がこれから）。
+     ショウが出ている公演はショウケースのシートが正。ほかのメンバーだけの公演は、Dytica のシートの同じ列のタブ（2026-10-30 に持ち主が作った）に入れる。
      ⚠️ タブを作り直したら gid も変わる（シートの URL の #gid= のあとの数字）。空なら読まない */
   showcaseLive:       { label: 'ショウケースのシート（ライブ）',     id: '1S9GmmMs6Rt3hMra3RW8Ijveh61dJg7-iCwFubJPyzJU', gid: '2144212156' },
   showcaseLiveDetail: { label: 'ショウケースのシート（ライブ詳細）', id: '1S9GmmMs6Rt3hMra3RW8Ijveh61dJg7-iCwFubJPyzJU', gid: '1186405315' },
-  dyticaLive:         { label: 'Dytica のシート（ライブ）',         id: '1Zh1XKg8B_j59gdfsCI9GVmPhKPFHjGb086dmbGjl5LY', gid: '' },
-  dyticaLiveDetail:   { label: 'Dytica のシート（ライブ詳細）',     id: '1Zh1XKg8B_j59gdfsCI9GVmPhKPFHjGb086dmbGjl5LY', gid: '' },
+  dyticaLive:         { label: 'Dytica のシート（ライブ）',         id: '1Zh1XKg8B_j59gdfsCI9GVmPhKPFHjGb086dmbGjl5LY', gid: '328718153' },    // 2026-10-30 に持ち主が作ったタブ
+  dyticaLiveDetail:   { label: 'Dytica のシート（ライブ詳細）',     id: '1Zh1XKg8B_j59gdfsCI9GVmPhKPFHjGb086dmbGjl5LY', gid: '1595699072' },   // 同上
 };
 
 /* 4人。key はファイル名と URL に使う。色は決めたこと.md の7章。
@@ -181,8 +181,17 @@ async function main() {
   const groups = groupSameCollab(videos);
   // ⚠️ 同じ企画のまとめ（p）のあとにすること
   const stats = buildStats(videos);
+  // ⚠️ 同じ企画のまとめ（p）のあと、markSameGames（ゲーム名 gt を消す）より前にすること
+  const played = buildPlayedGames(videos);
   // ⚠️ 同じ企画のまとめ（p）のあとにすること。別視点は1回と数える
-  markSameGames(videos);
+  const sameGames = markSameGames(videos);
+  // 日本語のゲーム名（同じゲームの配信と、みんなで遊んだゲームのぶん。meta.json の gameNames）
+  const gameNames = {};
+  new Set(sameGames.concat(played.list.map(x => x.g))).forEach(g => {
+    const ja = GAME_NAMES_FIXED[g] || gameNameFromTitles(played.streams[g] || []);
+    if (ja) gameNames[g] = ja;
+  });
+  console.log('ゲームの日本語の名前：' + Object.keys(gameNames).length + ' 種類（同じゲームの配信 ' + sameGames.length + '・みんなで遊んだゲーム ' + played.list.length + ' のうち）');
   await markSameThumbs(videos, songs, previous);
 
   // ── 件数が大きく減っていないか ──
@@ -199,7 +208,7 @@ async function main() {
   }
   if (report.errors.length) return finish(null);
 
-  finish({ videos, songs, groups, counts, discography, articles, lives, stats });
+  finish({ videos, songs, groups, counts, discography, articles, lives, stats, played: played.list, gameNames });
 }
 
 // ───────────────────────── 読む ─────────────────────────
@@ -968,12 +977,89 @@ function markSameGames(videos) {
   const target = v => v.gt && v.k === 'L' && !v.cl && !REPEAT_GAMES.has(v.gt) && !NON_GAME_TOPICS.has(v.gt);
   videos.forEach(v => { if (target(v)) (plays[v.gt] = plays[v.gt] || new Set()).add(v.p || v.i); });
   let n = 0;
+  const titles = {};
   videos.forEach(v => {
     const k = plays[v.gt] ? plays[v.gt].size : 0;
-    if (target(v) && k >= 2 && k <= GAME_MAX_PLAYS) { v.gm = v.gt; n++; }
+    if (target(v) && k >= 2 && k <= GAME_MAX_PLAYS) { v.gm = v.gt; n++; (titles[v.gm] = titles[v.gm] || []).push(v); }
     delete v.gt;
   });
-  console.log('同じゲームの配信：' + Object.keys(plays).filter(g => plays[g].size >= 2 && plays[g].size <= GAME_MAX_PLAYS).length + ' 種類・' + n + ' 本');
+  console.log('同じゲームの配信：' + Object.keys(titles).length + ' 種類・' + n + ' 本');
+  return Object.keys(titles);
+}
+
+/* みんなで遊んだゲーム（2026-10-30、持ち主の希望）。8人のうち何人が遊んだことがあるかを、ゲームごとに数える（サイトの「ゲーム」のページ）。
+   - 遊んだ：その人が出ている配信（本人の枠でも、ほかの人の枠に出た回でも）に、Holodex のゲーム名が付いているもの
+   - 回数は同じ企画の別視点を1回と数える。ゲームではないもの（NON_GAME_TOPICS）は入れない。繰り返し遊ぶゲーム（APEX など）は入れる
+   - 2人以上が遊んだゲームだけを書き出す（1人だけのものは「みんなで」にならないため）
+   - 配信には ga（ゲーム名）を付ける。アーカイブをゲームで絞るときに使う（gm は「同じゲームの配信」に出す単発のゲームだけ）
+   2026-10-30 のデータで数えた：8人全員が29種類・7人が23種類・6人が28種類（2人以上で335種類）。7人のゲームで抜けているのは小柳が14種類といちばん多い。
+   ⚠️ ショウのゲーム名は Holodex の控えから補う。控えを全部取り直す前（ゲーム名を控えに入れ始めた 10-29 より前の控え）は、
+      ゲーム名が分かる枠が4割ほどしかなく、8人全員が23種類と少なく出ていた（取り直して、ほかの7人と同じ8割ほどになった）
+   ⚠️ markSameGames（gt を消す）より前に呼ぶこと */
+function buildPlayedGames(videos) {
+  const streams = {};
+  videos.forEach(v => {
+    if (v.k !== 'L' || v.cl || !v.gt || NON_GAME_TOPICS.has(v.gt)) return;
+    v.ga = v.gt;
+    (streams[v.gt] = streams[v.gt] || []).push(v);
+  });
+  const list = [];
+  Object.keys(streams).forEach(g => {
+    const m = {};
+    MEMBERS.forEach(({ key }) => {
+      const ps = new Set(streams[g].filter(v => v.m.indexOf(key) !== -1).map(v => v.p || v.i));
+      if (ps.size) m[key] = ps.size;
+    });
+    if (Object.keys(m).length < 2) return;
+    list.push({ g, m, c: new Set(streams[g].map(v => v.p || v.i)).size });
+  });
+  list.sort((a, b) => Object.keys(b.m).length - Object.keys(a.m).length || b.c - a.c || a.g.localeCompare(b.g));
+  const by = {};
+  list.forEach(x => { const n = Object.keys(x.m).length; by[n] = (by[n] || 0) + 1; });
+  console.log('みんなで遊んだゲーム：' + Object.keys(by).sort((a, b) => b - a).map(n => n + '人 ' + by[n] + '種類').join('・'));
+  return { list, streams };
+}
+
+/* 日本語のゲーム名（2026-10-30、持ち主の希望）。Holodex のゲーム名は英語（The_Dandelion_Endures.）なので、配信の題名の【】から取る。
+   同じゲームの配信のうち、2本以上の題名の【】に同じ言葉があれば、それを名前にする（例：【タンポポは耐える。】）。
+   - 回の番号（#2・Part3・その1・第5回・2日目など）と、そのあとの言葉は外して比べる。どの回も同じ書き方なら、番号の前までを名前にする
+   - 名前の札（【星導ショウ/にじさんじ】）・ハッシュタグ・「初見」「雑談」などは名前にしない（NOT_GAME_WORD）
+   - 分からないとき（題名がそろっていない・【】が無い）は空。サイトは英語の名前のまま出す
+   2026-10-30 のデータで数えた：266種類のうち228種類で日本語（または題名どおりの英語）の名前が取れた。
+   ⚠️ 取れた名前が違っていたら、GAME_NAMES_FIXED に正しい名前を書く（自動より先に使う） */
+// シリーズ全体で1つのゲーム名になっているもの（Holodex の Pokemon など）は、題名からだと1作の名前（Pokémon LEGENDS Z-A）になるので、シリーズの名前にする
+const GAME_NAMES_FIXED = {
+  Pokemon: 'ポケモン', Mario_Kart: 'マリオカート', Mario_Party: 'マリオパーティ', smash: 'スマブラ', Splatoon: 'スプラトゥーン',
+  // 題名の書き方がそろわず自動では取れなかったもの（題名で使われている呼び方にした）
+  momotaro_dentetsu: '桃鉄',
+};
+const GAME_EPISODE = /\s*(?:[#＃]\s*\d+|part\.?\s*\d+|pt\.?\s*\d+|ep\.?\s*\d+|episode\s*\d+|day\s*\d+|その\s*\d+|其の\s*\d+|第\s*\d+\s*(?:回|話|夜|章|部|日)?|\d+\s*日目|\d+\s*回目|vol\.?\s*\d+|\(\s*\d+\s*\))(?:.*)$/i;
+const NOT_GAME_WORD = /^(?:完全)?初見|^雑談|^歌枠|^告知|^ネタバレ|^※|^コラボ|^ホラー$|^最終回|^新作|^実況|^生配信|^耐久|^同時視聴|^作業|^朝活|^vtuber|^新人|^ゲーム実況|^初配信|^深夜|^まったり|^参加型|^概要欄|^live$|^ライブ$|^en\b|^eng\b|^日本語|^短め|^ちょっとだけ|^人生初|^お知らせ|^おしらせ/i;
+function gameNameFromTitles(list) {
+  const groups = {};
+  const keyOf = s => s.toLowerCase().replace(/[\s・:：!！?？。、.,'’"]/g, '');
+  list.forEach(v => {
+    const p = v.p || v.i;
+    const seen = new Set();
+    (String(v.t || '').normalize('NFKC').match(/【[^】]*】|\[[^\]]*\]/g) || []).forEach(w => {
+      const full = w.slice(1, -1).replace(/\s+/g, ' ').trim();
+      if (full.length < 2 || /にじさんじ|nijisanji/i.test(full) || /^[#＃]/.test(full)) return;
+      const base = full.replace(GAME_EPISODE, '').replace(/[\s:：]+$/, '').trim();
+      if (base.length < 2 || NOT_GAME_WORD.test(base)) return;
+      const k = keyOf(base);
+      if (!k || seen.has(k)) return;
+      seen.add(k);
+      const g = groups[k] = groups[k] || { ps: new Set(), fulls: {}, bases: {} };
+      g.ps.add(p);
+      g.fulls[full] = (g.fulls[full] || 0) + 1;
+      g.bases[base] = (g.bases[base] || 0) + 1;
+    });
+  });
+  const best = Object.values(groups).sort((a, b) => b.ps.size - a.ps.size)[0];
+  if (!best || best.ps.size < 2) return '';
+  const top = o => Object.entries(o).sort((a, b) => b[1] - a[1])[0];
+  // どの回もほぼ同じ書き方（3分の2以上）なら、そのまま。回ごとに違えば、番号を外した形
+  return top(best.fulls)[1] >= best.ps.size * 2 / 3 ? top(best.fulls)[0] : top(best.bases)[0];
 }
 
 /* 題名に同じハッシュタグか【】の中の言葉があるか（同じ企画かを見分ける手がかり）。
@@ -1386,6 +1472,7 @@ function finish(data) {
   write('articles.json', data.articles);
   write('lives.json', data.lives);
   write('stats.json', data.stats);
+  write('played-games.json', data.played);
   write('cache/hosts.json', fillGuestHosts.cache || {});
   write('cache/holodex-sho.json', fillShoStarts.cache || { fullAt: '', items: {} });
   write('cache/gone.json', dropGoneVideos.cache || { fullAt: '', ids: {} });
@@ -1400,6 +1487,8 @@ function finish(data) {
     units: UNITS,
     // 人ごとの動画の数（「メンバーを選ぶ」の画面に出す。MECHATU-NE と同じ見せ方）
     memberCounts: Object.fromEntries(MEMBERS.map(m => [m.key, vids.filter(v => v.m.indexOf(m.key) !== -1).length])),
+    // 同じゲームの配信のゲーム名（gm → 日本語の名前。分かったものだけ。2026-10-30）。どのページでも読む meta に入れる（ゲーム名のためだけに別のファイルを読まないで済むように）
+    gameNames: data.gameNames || {},
     files: files,
   };
   /* 中身が前回と同じかを見分ける印。同じなら公開しなくてよい。
