@@ -15,9 +15,10 @@
 #   公開しないので、サイトは前のデータのまま。GitHub からメールが届く。
 #   理由は、実行のページの「Summary」に出る。
 #
-# ⚠️ 公開リポジトリの「時間で動く設定（schedule）」は、リポジトリに60日間なにも起きないと GitHub が止める。
-#    止まっても手やシートの見張りからは動くが、3時間おきの保険が無くなる。
-#    Actions タブに止まった知らせが出たら「Enable workflow」を押す（長期運用ガイドに書く）。
+# ⚠️ 公開リポジトリの「時間で動く設定（schedule）」は、リポジトリに60日間コミットが無いと GitHub が止める。
+#    シートを書き換えるだけではコミットにならないので、サイトの更新が無い時期が続くと止まる。
+#    そこで keepalive の仕事で、最後のコミットから50日たったら .keepalive（日付だけのファイル）を更新してコミットする（2026-10-30、持ち主の了承）。
+#    それでも止まったときは、Actions タブの「Enable workflow」を押す（docs/長期運用ガイド.md の1章）。
 
 name: データを書き出して公開する
 
@@ -118,6 +119,27 @@ jobs:
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4
+
+  # 60日で止まらないように、最後のコミットから50日たったら、印のファイルを更新してコミットする（上の説明）。
+  # ⚠️ 毎回コミットしないこと。50日たったときだけ（コミットの履歴が印で埋まらないように）
+  keepalive:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+      - name: 最後のコミットから50日たっていたら、印を更新する
+        run: |
+          days=$(( ( $(date +%s) - $(git log -1 --format=%ct) ) / 86400 ))
+          echo "最後のコミットから ${days} 日"
+          if [ "$days" -ge 50 ]; then
+            date -u +%Y-%m-%dT%H:%M:%SZ > .keepalive
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add .keepalive
+            git commit -m "60日で書き出しが止まらないように、印を更新する（自動）"
+            git push
+          fi
 
   # 公開はしたが、前回には無かった「直したい項目」が出たときに、わざと失敗にして GitHub からメールを届ける。
   # ⚠️ 直したい項目があるたびに失敗にしないこと。直すまで3時間おきにメールが届いてしまう。

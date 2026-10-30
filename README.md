@@ -14,7 +14,7 @@ MECHATU-A（Oriens：赤城ウェン・宇佐美リト・佐伯イッテツ・�
 ## 更新のしかた
 
 `export/build.js` が読んで、点検して、`out/` に書き出します。
-GitHub Actions（`.github/workflows/publish.yml`）が3時間おき（と、シートが変わったとき）に動かします。
+GitHub Actions（`.github/workflows/publish.yml`）が3時間おきに動かします（すぐ出したいときは Actions タブの Run workflow。シートが変わったときに動かす仕組みは、まだ作っていません）。
 
 ```
 node export/build.js                   公開中のシートから書き出す
@@ -57,6 +57,7 @@ node export/build.js --prev <フォルダ>   前回の公開の代わりに、�
 | `games.json` | 同じゲームの配信（ゲーム名 → その配信。動画の形のまま、新しい順）。主に単発のゲームだけ（別視点を1回と数えて2〜15回遊ばれたもの）。動画の詳細カード用 |
 | `discography.json` | ディスコグラフィ（CD・Blu-ray・デジタル配信の作品）。ショウケースのシートと Dytica のシートの「ディスコグラフィ」から |
 | `articles.json` | 記事（雑誌・ウェブの記事・特集・ライブレポート）。ショウケースのシートと Dytica のシートの「記事」から |
+| `voices.json` | ボイス。`[{ t: ボイス名, d: 日付, k: 種別, s: 自作台本なら1, u: 購入ページ, r: お知らせ, tag: ハッシュタグ（#なし）, m: 出ている人 }]`（新しい順）。ショウケースのシートと Dytica のシートの「ボイス」から。販売の状況は入れない |
 | `lives.json` | ライブ（公演・セットリスト・関連動画・ライブレポート・リリース）。ショウケースのシートと Dytica のシートの「ライブ」「ライブ詳細」から |
 | `played-games.json` | みんなで遊んだゲーム。`[{ g: ゲーム名, m: { 人: 遊んだ回数 }, c: 全部の回数 }]`（2人以上が遊んだものだけ。遊んだ人の多い順）。数え方は export/build.js の buildPlayedGames |
 | `stats.json` | 周年記念のページの数（8人それぞれと全員の配信の本数・時間。年ごとも）。数え方は export/build.js の buildStats |

@@ -59,6 +59,10 @@ const SOURCES = {
   showcaseLive:       { label: 'ショウケースのシート（ライブ）',     id: '1S9GmmMs6Rt3hMra3RW8Ijveh61dJg7-iCwFubJPyzJU', gid: '2144212156' },
   showcaseLiveDetail: { label: 'ショウケースのシート（ライブ詳細）', id: '1S9GmmMs6Rt3hMra3RW8Ijveh61dJg7-iCwFubJPyzJU', gid: '1186405315' },
   dyticaLive:         { label: 'Dytica のシート（ライブ）',         id: '1Zh1XKg8B_j59gdfsCI9GVmPhKPFHjGb086dmbGjl5LY', gid: '328718153' },    // 2026-10-30 に持ち主が作ったタブ
+  /* ボイス（2026-10-30）。ショウのぶんはショウケースの「ボイス」、ほかの人は Dytica のシートの「ボイス」タブ（列は同じ＋「参加」。持ち主がこれから作る）。
+     ⚠️ タブを作り直したら gid も変わる。空なら読まない */
+  showcaseVoice: { label: 'ショウケースのシート（ボイス）', id: '1S9GmmMs6Rt3hMra3RW8Ijveh61dJg7-iCwFubJPyzJU', gid: '62138518' },
+  dyticaVoice:   { label: 'Dytica のシート（ボイス）',     id: '1Zh1XKg8B_j59gdfsCI9GVmPhKPFHjGb086dmbGjl5LY', gid: '' },
   dyticaLiveDetail:   { label: 'Dytica のシート（ライブ詳細）',     id: '1Zh1XKg8B_j59gdfsCI9GVmPhKPFHjGb086dmbGjl5LY', gid: '1595699072' },   // 同上
 };
 
@@ -143,6 +147,7 @@ async function main() {
   const discography = await buildDiscography(previous);
   const articles = await buildArticles(previous);
   const lives = await buildLives(previous);
+  const voices = await buildVoices(previous);
 
   // ── まとめる ──
   const songs = buildSongs(songsData);
@@ -195,9 +200,9 @@ async function main() {
   await markSameThumbs(videos, songs, previous);
 
   // ── 件数が大きく減っていないか ──
-  const counts = { videos: videos.length, clips: videos.filter(v => v.cl).length, songs: songs.length, discography: discography.length, articles: articles.length, lives: lives.length };
+  const counts = { videos: videos.length, clips: videos.filter(v => v.cl).length, songs: songs.length, discography: discography.length, articles: articles.length, lives: lives.length, voices: voices.length };
   if (previous.meta && previous.meta.counts) {
-    // ⚠️ ディスコグラフィ・記事・ライブは件数で止めない（20件ほどしかなく、2件消しただけで9割を切る）
+    // ⚠️ ディスコグラフィ・記事・ライブ・ボイスは件数で止めない（20件ほどしかなく、2件消しただけで9割を切る）
     ['videos', 'songs'].forEach(k => {
       const before = previous.meta.counts[k] || 0;
       if (before && counts[k] < before * MIN_RATIO) {
@@ -208,7 +213,7 @@ async function main() {
   }
   if (report.errors.length) return finish(null);
 
-  finish({ videos, songs, groups, counts, discography, articles, lives, stats, played: played.list, gameNames });
+  finish({ videos, songs, groups, counts, discography, articles, lives, voices, stats, played: played.list, gameNames });
 }
 
 // ───────────────────────── 読む ─────────────────────────
@@ -257,11 +262,11 @@ async function readJson(key) {
 
 // 公開中の meta.json（前回の件数）・report.json（前回の点検）・他枠の持ち主の名前の控え。無くても止めない（初回は無い）
 async function readPrevious() {
-  const prev = { meta: null, report: null, hosts: {}, discography: null, articles: null, lives: null, holodex: null, gone: null, shorts: null, thumbs: null };
+  const prev = { meta: null, report: null, hosts: {}, discography: null, articles: null, lives: null, voices: null, holodex: null, gone: null, shorts: null, thumbs: null };
   readPrevious.last = prev;
   if (args.prev) {   // 試すとき：前回の公開の代わりに、手元のフォルダ（前回の out/）を読む
     const read = f => { try { return JSON.parse(fs.readFileSync(path.join(args.prev, f), 'utf8')); } catch (e) { return null; } };
-    prev.meta = read('meta.json'); prev.report = read('report.json'); prev.hosts = read('cache/hosts.json') || {}; prev.discography = read('discography.json'); prev.articles = read('articles.json'); prev.lives = read('lives.json'); prev.holodex = read('cache/holodex-sho.json'); prev.gone = read('cache/gone.json'); prev.shorts = read('cache/shorts.json'); prev.thumbs = read('cache/thumbs.json');
+    prev.meta = read('meta.json'); prev.report = read('report.json'); prev.hosts = read('cache/hosts.json') || {}; prev.discography = read('discography.json'); prev.articles = read('articles.json'); prev.lives = read('lives.json'); prev.voices = read('voices.json'); prev.holodex = read('cache/holodex-sho.json'); prev.gone = read('cache/gone.json'); prev.shorts = read('cache/shorts.json'); prev.thumbs = read('cache/thumbs.json');
     return prev;
   }
   if (!PAGES_URL || FROM) return prev;
@@ -271,6 +276,7 @@ async function readPrevious() {
   try { prev.discography = JSON.parse(await fetchText(PAGES_URL + 'discography.json?t=' + Date.now())); } catch (e) {}
   try { prev.articles = JSON.parse(await fetchText(PAGES_URL + 'articles.json?t=' + Date.now())); } catch (e) {}
   try { prev.lives = JSON.parse(await fetchText(PAGES_URL + 'lives.json?t=' + Date.now())); } catch (e) {}
+  try { prev.voices = JSON.parse(await fetchText(PAGES_URL + 'voices.json?t=' + Date.now())); } catch (e) {}
   try { prev.holodex = JSON.parse(await fetchText(PAGES_URL + 'cache/holodex-sho.json?t=' + Date.now())); } catch (e) {}
   try { prev.gone = JSON.parse(await fetchText(PAGES_URL + 'cache/gone.json?t=' + Date.now())); } catch (e) {}
   try { prev.shorts = JSON.parse(await fetchText(PAGES_URL + 'cache/shorts.json?t=' + Date.now())); } catch (e) {}
@@ -1277,6 +1283,75 @@ function articleKey(u) {
   } catch (e) { return ''; }
 }
 
+/* ボイス（2026-10-30、持ち主の希望。決めたこと.md の1章で「載せる」にしていたもの）。
+   ショウケースのシートの「ボイス」はショウのボイス、Dytica のシートの「ボイス」タブは「参加」に書いた人のボイス（列は同じ＋「参加」）。
+   同じボイスが両方にあるとき（シリーズで全員が出すボイスなど）は、購入ページの URL で1件にし、参加した人を合わせる。
+   載せるもの：ボイス名・日付（並べ替え用、無ければ販売期間の始まり）・種別・自作台本・購入ページ・お知らせ（プレスリリース）・ハッシュタグ
+   ⚠️ 載せないもの：販売区分（販売終了・常設など）と購入可否（販売状況は載せないと決めた。1章）、サンプル（X のポスト）、キービジュアル（画像）、
+      プレスリリースが X のポストのもの。販売期間の文字はそのまま出さない（曜日が入っているため。日付に曜日を付けない決まり）
+   ⚠️ 読めなくても止めず、前回の公開のものを使う（ディスコグラフィと同じ） */
+async function buildVoices(previous) {
+  const scRows = await readSheetSoft('showcaseVoice');
+  const dyRows = await readSheetSoft('dyticaVoice');
+  if (!SOURCES.dyticaVoice.gid && !FROM) note('Dytica のシートの「ボイス」タブは、まだ読んでいません（タブを作ったら export/build.js に gid を入れる）');
+  if (!scRows && !dyRows) return (previous && previous.voices) || [];
+  const byKey = {};
+  const order = [];
+  const add = item => {
+    const key = normUrl(item.u) || item.t;
+    const had = byKey[key];
+    if (!had) { byKey[key] = item; order.push(key); return; }
+    had.m = sortMembers(Array.from(new Set(had.m.concat(item.m))));
+    ['d', 'k', 'r', 'tag'].forEach(f => { if (!had[f] && item[f]) had[f] = item[f]; });
+  };
+  if (scRows) parseVoices(scRows, 'showcaseVoice').forEach(add);
+  if (dyRows) parseVoices(dyRows, 'dyticaVoice').forEach(add);
+  return order.map(k => byKey[k]).sort((a, b) => String(b.d || '').localeCompare(String(a.d || '')) || a.t.localeCompare(b.t));
+}
+
+/* ボイスのシートの1行 → ボイス。見出しはショウケースに合わせた（ぴったり同じ文字で探す）。
+   ⚠️ 見出しが無いときも止めない（その表だけ読まずに知らせる） */
+function parseVoices(rows, key) {
+  const label = SOURCES[key].label;
+  const header = rows[0].map(h => String(h).trim());
+  const need = ['ボイス名', '販売期間', 'ボイス種別', '購入ページ'].concat(key === 'dyticaVoice' ? ['参加'] : []);
+  const missing = need.filter(h => header.indexOf(h) === -1);
+  if (missing.length) { warn(label + ' に見出しが見つかりません：' + missing.join('、') + '。この表は読んでいません'); return []; }
+  const col = h => header.indexOf(h);
+  const out = [];
+  for (let i = 1; i < rows.length; i++) {
+    const r = rows[i];
+    const get = h => (col(h) < 0 ? '' : String(r[col(h)] == null ? '' : r[col(h)]).trim());
+    const title = get('ボイス名');
+    if (!title) continue;
+    const rowNo = i + 1;
+    const item = { t: title };
+    // 日付：並べ替え用（2026/07/10）が無ければ、販売期間の始まり（2026年10月9日(金)12時～…）から
+    const m = get('販売期間').match(/(\d{4})年(\d{1,2})月(\d{1,2})日/);
+    const date = normDate(get('並べ替え用')) || (m ? normDate(m[1] + '/' + m[2] + '/' + m[3]) : '');
+    if (date) item.d = date;
+    else rowIssue(key, rowNo, '日付が読めません（並べ替え用に 2026/10/09 の形で入れるか、販売期間を「2026年10月9日」で始めてください）。日付なしで載せました');
+    if (get('ボイス種別')) item.k = get('ボイス種別');
+    if (isCircle(get('自作台本'))) item.s = 1;
+    const shop = get('購入ページ'); if (/^https?:\/\//.test(shop)) item.u = shop;
+    const press = get('プレスリリース'); if (/^https?:\/\//.test(press) && !/(^|\/\/|\.)(x|twitter)\.com\//i.test(press)) item.r = press;
+    const tag = get('ハッシュタグ').replace(/^[#＃]/, '').trim(); if (tag) item.tag = tag;
+    if (key === 'showcaseVoice') item.m = [SHO];
+    else {
+      const ms = [];
+      splitList(get('参加')).forEach(n => {
+        const k = KEY_BY_SHORT[n] || KEY_BY_NAME[nameKey(n)];
+        if (k) { if (ms.indexOf(k) === -1) ms.push(k); }
+        else rowIssue(key, rowNo, '参加の「' + n + '」が8人の誰か分かりません（ウェン・リト・イッテツ・マナ・ライ・ロウ・ショウ・カゲツ のどれか）。外しました');
+      });
+      if (!ms.length) { rowIssue(key, rowNo, '参加が空なので、この行は載せていません'); continue; }
+      item.m = sortMembers(ms);
+    }
+    out.push(item);
+  }
+  return out;
+}
+
 /* ライブ（公演）。ショウケースの「ライブ」「ライブ詳細」と、Dytica のシートの同じ形のタブを読む。
    同じ ID の公演が両方にあるときは、ショウケースのほうを使う（ショウが出ている公演はショウケースが正）。
    載せるもの：公演の基本（名前・日付・会場・時刻・形態・アーカイブ・公式サイト・出演）／セットリスト／関連動画／ライブレポート・特集記事／リリース
@@ -1471,6 +1546,7 @@ function finish(data) {
   write('discography.json', data.discography);
   write('articles.json', data.articles);
   write('lives.json', data.lives);
+  write('voices.json', data.voices);
   write('stats.json', data.stats);
   write('played-games.json', data.played);
   write('cache/hosts.json', fillGuestHosts.cache || {});
