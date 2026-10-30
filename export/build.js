@@ -53,6 +53,13 @@ const SOURCES = {
   /* ショウの切り抜き（公式やほかのライバーのチャンネルの切り抜き）。ショウのぶんはショウケースが正（動画と同じ）。
      列は ID・再生リスト名・公開日・動画タイトル・動画URL・チャンネル（2026-10-28 に134本）。読めなくても止めない */
   showcaseClips: { label: 'ショウケースのシート（切り抜き）', id: '1S9GmmMs6Rt3hMra3RW8Ijveh61dJg7-iCwFubJPyzJU', gid: '1764814068' },
+  /* ライブ（2026-10-30、持ち主の希望）。「ライブ」は1行＝1公演、「ライブ詳細」は1行＝1項目（セットリスト・関連動画など）。
+     ショウが出ている公演はショウケースのシートが正。ほかのメンバーだけの公演は、Dytica のシートに同じ列のタブを作って入れる（持ち主がこれから）。
+     ⚠️ タブを作り直したら gid も変わる（シートの URL の #gid= のあとの数字）。空なら読まない */
+  showcaseLive:       { label: 'ショウケースのシート（ライブ）',     id: '1S9GmmMs6Rt3hMra3RW8Ijveh61dJg7-iCwFubJPyzJU', gid: '2144212156' },
+  showcaseLiveDetail: { label: 'ショウケースのシート（ライブ詳細）', id: '1S9GmmMs6Rt3hMra3RW8Ijveh61dJg7-iCwFubJPyzJU', gid: '1186405315' },
+  dyticaLive:         { label: 'Dytica のシート（ライブ）',         id: '1Zh1XKg8B_j59gdfsCI9GVmPhKPFHjGb086dmbGjl5LY', gid: '' },
+  dyticaLiveDetail:   { label: 'Dytica のシート（ライブ詳細）',     id: '1Zh1XKg8B_j59gdfsCI9GVmPhKPFHjGb086dmbGjl5LY', gid: '' },
 };
 
 /* 4人。key はファイル名と URL に使う。色は決めたこと.md の7章。
@@ -135,6 +142,7 @@ async function main() {
   const scClips = parseShowcaseClips(await readSheetSoft('showcaseClips'));
   const discography = await buildDiscography(previous);
   const articles = await buildArticles(previous);
+  const lives = await buildLives(previous);
 
   // ── まとめる ──
   const songs = buildSongs(songsData);
@@ -171,14 +179,16 @@ async function main() {
   if (unsure) note('クリップにするか、まだ選んでいない行（クリップの列が「?」）：' + unsure + ' 行。自動で決めて出しています');
   videos.forEach(v => { delete v.clipUnsure; });
   const groups = groupSameCollab(videos);
+  // ⚠️ 同じ企画のまとめ（p）のあとにすること
+  const stats = buildStats(videos);
   // ⚠️ 同じ企画のまとめ（p）のあとにすること。別視点は1回と数える
   markSameGames(videos);
   await markSameThumbs(videos, songs, previous);
 
   // ── 件数が大きく減っていないか ──
-  const counts = { videos: videos.length, clips: videos.filter(v => v.cl).length, songs: songs.length, discography: discography.length, articles: articles.length };
+  const counts = { videos: videos.length, clips: videos.filter(v => v.cl).length, songs: songs.length, discography: discography.length, articles: articles.length, lives: lives.length };
   if (previous.meta && previous.meta.counts) {
-    // ⚠️ ディスコグラフィ・記事は件数で止めない（20件ほどしかなく、2件消しただけで9割を切る）
+    // ⚠️ ディスコグラフィ・記事・ライブは件数で止めない（20件ほどしかなく、2件消しただけで9割を切る）
     ['videos', 'songs'].forEach(k => {
       const before = previous.meta.counts[k] || 0;
       if (before && counts[k] < before * MIN_RATIO) {
@@ -189,7 +199,7 @@ async function main() {
   }
   if (report.errors.length) return finish(null);
 
-  finish({ videos, songs, groups, counts, discography, articles });
+  finish({ videos, songs, groups, counts, discography, articles, lives, stats });
 }
 
 // ───────────────────────── 読む ─────────────────────────
@@ -238,11 +248,11 @@ async function readJson(key) {
 
 // 公開中の meta.json（前回の件数）・report.json（前回の点検）・他枠の持ち主の名前の控え。無くても止めない（初回は無い）
 async function readPrevious() {
-  const prev = { meta: null, report: null, hosts: {}, discography: null, articles: null, holodex: null, gone: null, shorts: null, thumbs: null };
+  const prev = { meta: null, report: null, hosts: {}, discography: null, articles: null, lives: null, holodex: null, gone: null, shorts: null, thumbs: null };
   readPrevious.last = prev;
   if (args.prev) {   // 試すとき：前回の公開の代わりに、手元のフォルダ（前回の out/）を読む
     const read = f => { try { return JSON.parse(fs.readFileSync(path.join(args.prev, f), 'utf8')); } catch (e) { return null; } };
-    prev.meta = read('meta.json'); prev.report = read('report.json'); prev.hosts = read('cache/hosts.json') || {}; prev.discography = read('discography.json'); prev.articles = read('articles.json'); prev.holodex = read('cache/holodex-sho.json'); prev.gone = read('cache/gone.json'); prev.shorts = read('cache/shorts.json'); prev.thumbs = read('cache/thumbs.json');
+    prev.meta = read('meta.json'); prev.report = read('report.json'); prev.hosts = read('cache/hosts.json') || {}; prev.discography = read('discography.json'); prev.articles = read('articles.json'); prev.lives = read('lives.json'); prev.holodex = read('cache/holodex-sho.json'); prev.gone = read('cache/gone.json'); prev.shorts = read('cache/shorts.json'); prev.thumbs = read('cache/thumbs.json');
     return prev;
   }
   if (!PAGES_URL || FROM) return prev;
@@ -251,6 +261,7 @@ async function readPrevious() {
   try { prev.hosts = JSON.parse(await fetchText(PAGES_URL + 'cache/hosts.json?t=' + Date.now())); } catch (e) {}
   try { prev.discography = JSON.parse(await fetchText(PAGES_URL + 'discography.json?t=' + Date.now())); } catch (e) {}
   try { prev.articles = JSON.parse(await fetchText(PAGES_URL + 'articles.json?t=' + Date.now())); } catch (e) {}
+  try { prev.lives = JSON.parse(await fetchText(PAGES_URL + 'lives.json?t=' + Date.now())); } catch (e) {}
   try { prev.holodex = JSON.parse(await fetchText(PAGES_URL + 'cache/holodex-sho.json?t=' + Date.now())); } catch (e) {}
   try { prev.gone = JSON.parse(await fetchText(PAGES_URL + 'cache/gone.json?t=' + Date.now())); } catch (e) {}
   try { prev.shorts = JSON.parse(await fetchText(PAGES_URL + 'cache/shorts.json?t=' + Date.now())); } catch (e) {}
@@ -832,8 +843,12 @@ function groupSameCollab(videos) {
       if (g.gt && o.gt) {
         if (g.gt !== o.gt) return;   // 同じゲームなら、重なっていて出ているだけでよい
       } else {
+        /* 片方のゲーム名が分かるときは、もう片方の題名にそのゲームの名前が出てくれば同じ企画とみなす（2026-10-30）。
+           Holodex にもシートにもゲーム名が無い他枠があった（10/23 の叶さんの「スクリムDAY1 …#にじEX_OW」と、伊波の Overwatch の配信）。
+           ⚠️ 開始時刻の差で決めないこと。決まった時刻に初めて流れる録画の番組（四季凪さんの「検証」など）が、8人の配信と同じ時刻に重なってまとまった */
+        const named = g.gt ? titleHasGame(o.t, g.gt) : o.gt ? titleHasGame(g.t, o.gt) : false;
         const ofShort = ov / Math.min(g.l, o.l), ofLong = ov / Math.max(g.l, o.l);
-        if (!((ofShort >= 0.9 && ofLong >= 0.6) || (ofShort >= 0.6 && shareTitleWord(g.t, o.t)))) return;
+        if (!(named || (ofShort >= 0.9 && ofLong >= 0.6) || (ofShort >= 0.6 && shareTitleWord(g.t, o.t)))) return;
       }
       if (!best[o.h] || ov > best[o.h].ov) best[o.h] = { o, ov };
     });
@@ -849,16 +864,57 @@ function groupSameCollab(videos) {
   });
   const linked = linkedIds.size;
 
+  /* 3) 枠の立て直し（2026-10-30、持ち主の希望）。短い配信のすぐ後に枠が立ったものは、立て直しの見込みが高いので同じ企画にまとめる。
+     - 同じチャンネル（8人の枠でも、ほかの人の枠でも）：10分以内の配信が終わってから10分以内に、同じチャンネルで次の配信が始まったもの。
+       同じ人の枠が2本入ってよい（canJoin の決まりの例外）
+     - ほかの人の枠の短い配信：10分以内で8人のだれかが出ていて、その人の配信が、短い配信のあいだか終わってから10分以内に始まったもの。
+       立て直したあとの枠がデータに無いとき用（10/29 の早乙女ベリーさんの2分40秒の枠と、そのすぐ後に始まった緋八の配信）
+     - ⚠️ ゲーム名が両方分かっていて違うものはまとめない。短く遊んで別のゲームに移っただけのことがある（2023-09-23 の星導の Togges 8分 → 影廊）。
+       ゲーム名がどちらか分からないとき（ショウケースから来たショウの配信など）は、題名に同じハッシュタグか【】の言葉があるときと、
+       短いほうの題名が「？」や名前だけのような仮の題名のとき（【】の言葉が無い）だけまとめる
+     - ⚠️ 長さは10分までにすること。20〜30分の配信の後には、マイクラのハードコアの次の周や、Detroit の続きの回（別の配信）が来ることが多かった
+     実データ（2026-10-30）で数えた：同じチャンネルで「10分以内の配信 → 10分以内に次の配信」は19組。どれも題名がほぼ同じか「改」「仕切り直し」「２」など */
+  const RESTART_MAX_SEC = 10 * 60, RESTART_GAP_MS = 10 * 60e3;
+  // a が短いほう。ゲーム名が両方分かればそれで、分からなければ題名で見る
+  const sameGameOk = (a, b) => (a.gt && b.gt) ? a.gt === b.gt : (shareTitleWord(a.t, b.t) || titleWords(a.t).size === 0);
+  const timed = videos.filter(v => v.k === 'L' && !v.cl && v.s && v.l && (v.h || v.o));
+  const byChannel = {};
+  timed.forEach(v => { const key = v.h ? 'h:' + v.h : 'o:' + v.o; (byChannel[key] = byChannel[key] || []).push(v); });
+  let restarts = 0;
+  Object.values(byChannel).forEach(list => {
+    list.sort((a, b) => startOf(a) - startOf(b));
+    for (let i = 0; i + 1 < list.length; i++) {
+      const a = list[i], b = list[i + 1];
+      if (a.l > RESTART_MAX_SEC || !sameGameOk(a, b)) continue;
+      const gap = startOf(b) - (startOf(a) + a.l * 1000);
+      if (gap < -5 * 60e3 || gap > RESTART_GAP_MS) continue;
+      add(a); add(b); join(a, b); restarts++;
+    }
+  });
+  guests.forEach(g => {
+    if (g.l > RESTART_MAX_SEC || g.gt === 'totsu' || TOTSU_TITLE.test(g.t)) return;
+    const gs = startOf(g), ge = gs + g.l * 1000;
+    const best = {};
+    own.forEach(o => {
+      if (g.m.indexOf(o.h) === -1 || !sameGameOk(g, o)) return;
+      const os = startOf(o);
+      if (os < gs || os > ge + RESTART_GAP_MS) return;
+      if (!best[o.h] || os < startOf(best[o.h])) best[o.h] = o;
+    });
+    Object.values(best).forEach(o => { add(g); add(o); if (canJoin(g, o)) { join(g, o); restarts++; } });
+  });
+
   const members = {};
   videos.forEach(v => { if (parent[v.i]) (members[find(v.i)] = members[find(v.i)] || []).push(v); });
   let count = 0;
   Object.values(members).forEach(list => {
     if (list.length < 2) return;
     count++;
-    list.sort((a, b) => hostRank(a) - hostRank(b));
+    // 同じ人の枠が2本あるとき（枠の立て直し）は、長いほう（立て直したあと）を代表にする
+    list.sort((a, b) => hostRank(a) - hostRank(b) || (b.l || 0) - (a.l || 0));
     list.forEach(v => { v.p = list[0].i; });
   });
-  console.log('同じ企画の別視点：' + count + ' 組（ほかの人の枠から ' + linked + ' 本）');
+  console.log('同じ企画の別視点：' + count + ' 組（ほかの人の枠から ' + linked + ' 本・枠の立て直し ' + restarts + ' 組）');
   return count;
 }
 
@@ -878,6 +934,35 @@ const NON_GAME_TOPICS = new Set(['talk', 'morning', 'singing', '3D_Stream', 'wat
   'Superchat_Reading', 'Outfit_Reveal', 'unboxing', 'announce', 'mukbang', 'celebration', 'Debut_Stream', 'drawing', 'asmr', 'membership',
   'membersonly', 'Teaser', 'Review', 'Vlog', 'Animation', 'Music_Cover', 'Shopping', 'Ranking', 'Musical_Instrument', 'endurance', 'Gathering',
   'Quiz', 'TRPG', 'Situation_puzzle', 'Horse_racing', 'Language_learning', 'Fortune_telling', 'Personality_Test', 'CalorieMate']);
+/* 周年記念のページの数（2026-10-30、持ち主の希望）。8人それぞれと全員の「配信」の本数・時間を、年ごとにも数える。
+   数え方は組み合わせ（buildCombos）と同じ：配信（k が L）だけ、クリップと配信予定は数えない、同じ企画の別視点は1回。
+   本人の枠が無い回（ほかの人の枠に出た回）も、その人の配信として数える。時間は、本人の枠があればその長さ、無ければ代表の長さ。
+   2026-10-30 のデータで数えた：8人の配信 7,589本・24,848時間（2023年 1,612本 → 2024年 2,106本 → 2025年 2,033本）。
+   ⚠️ 「いちばん長い配信」は出さないこと。8人とも12時間ちょうど近く（YouTube のアーカイブが残る上限）の配信が何本もあり、比べる意味が無かった
+   ⚠️ 「よく遊んだゲーム」も出さないこと。ショウのぶんはゲーム名が Holodex の控えにある枠だけ（ほかの7人の1割ほど）で、並べると食い違って見えた */
+function buildStats(videos) {
+  const today = new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10);
+  const lives = videos.filter(v => v.k === 'L' && !v.cl && v.d <= today);
+  const tally = (list, own) => {
+    // 同じ企画からは1本：本人の枠（全員のときは8人の並び順で前の人の枠）→ 長いほう（枠の立て直しは立て直したあと）
+    const rank = v => (own ? (v.h === own ? 0 : 1) : hostRank(v)) * 1e7 - Math.min(v.l || 0, 1e7 - 1);
+    const best = {};
+    list.forEach(v => { const k = v.p || v.i; if (!best[k] || rank(v) < rank(best[k])) best[k] = v; });
+    const picks = Object.values(best);
+    const y = {};
+    picks.forEach(v => {
+      const k = v.d.slice(0, 4);
+      y[k] = y[k] || { n: 0, h: 0 };
+      y[k].n++; y[k].h += (v.l || 0) / 3600;
+    });
+    Object.values(y).forEach(x => { x.h = Math.round(x.h); });
+    return { n: picks.length, h: Math.round(picks.reduce((s, v) => s + (v.l || 0), 0) / 3600), y };
+  };
+  const members = {};
+  MEMBERS.forEach(m => { members[m.key] = tally(lives.filter(v => v.m.indexOf(m.key) !== -1), m.key); });
+  return { today, all: tally(lives, ''), members };
+}
+
 function markSameGames(videos) {
   const plays = {};
   const target = v => v.gt && v.k === 'L' && !v.cl && !REPEAT_GAMES.has(v.gt) && !NON_GAME_TOPICS.has(v.gt);
@@ -898,12 +983,45 @@ function titleWords(t) {
   const s = String(t || '').normalize('NFKC').toLowerCase();
   const words = [];
   (s.match(/#[^\s#【】|/]+/g) || []).forEach(w => words.push(w.slice(1)));
-  (s.match(/【[^】]*】/g) || []).forEach(w => words.push(w.slice(1, -1).replace(/\s+/g, '')));
+  /* ⚠️ 名前の札（【星導ショウ/にじさんじ】のように「にじさんじ」を含む【】）は手がかりにしないこと。
+        同じ人の配信どうしは、ゲームが違っても名前の札が同じになる（2023-09-23 の星導の Togges → 影廊 が、これで同じ企画になった） */
+  (s.match(/【[^】]*】/g) || []).forEach(w => { const x = w.slice(1, -1).replace(/\s+/g, ''); if (!/にじさんじ|nijisanji/.test(x)) words.push(x); });
   return new Set(words.filter(w => w.length >= 2 && !COMMON_TITLE_WORDS.has(w)));
 }
 function shareTitleWord(a, b) {
   const x = titleWords(a), y = titleWords(b);
   return [...x].some(w => y.has(w));
+}
+
+/* 題名にゲームの名前が出てくるか（gt は Holodex のゲーム名）。よく遊ばれるゲームは、題名での呼び方も見る。
+   英字は単語として比べる（「OW」が「show」などに当たらないように）。それ以外は、題名に含まれていればよい。
+   2026-10-30 のデータで確かめた：ゲーム名が片方しか分からない他枠で、これで増えたのは2本（叶さんの OW のスクリム、でびでび・でびるさんの LoL のカスタム）。どちらも同じ企画 */
+const GAME_ALIASES = {
+  Overwatch: ['ow', 'ow2', 'overwatch', 'オーバーウォッチ'],
+  Street_Fighter: ['sf6', 'スト6', 'ストリートファイター', 'street fighter'],
+  apex: ['apex', 'エーペックス', 'エペ'],
+  valorant: ['valorant', 'ヴァロ', 'ヴァロラント'],
+  GTA: ['gta', 'newtown', 'madtown', 'ストグラ'],
+  minecraft: ['minecraft', 'マイクラ', 'マインクラフト'],
+  Mario_Kart: ['マリカ', 'マリオカート', 'mario kart'],
+  Splatoon: ['splatoon', 'スプラ'],
+  League_of_Legends: ['lol', 'league of legends'],
+  Mahjong: ['雀魂', '麻雀', 'mahjong'],
+  smash: ['スマブラ', 'smash'],
+  Pokemon: ['ポケモン', 'pokemon'],
+  ark: ['ark'],
+  Rust: ['rust'],
+  among_us: ['among us', 'アモアス', 'amongus'],
+};
+function titleHasGame(title, gt) {
+  const t = String(title || '').normalize('NFKC').toLowerCase();
+  const tokens = new Set(t.match(/[a-z0-9]+/g) || []);
+  const words = new Set((GAME_ALIASES[gt] || []).map(w => w.toLowerCase()));
+  String(gt).toLowerCase().split(/[_:\s]+/).filter(w => w.length >= 4).forEach(w => words.add(w));
+  for (const w of words) {
+    if (/^[a-z0-9]+$/.test(w) ? tokens.has(w) : t.indexOf(w) !== -1) return true;
+  }
+  return false;
 }
 
 /* MECHATU-NE の楽曲のうち、4人の誰かが歌っているもの（歌ってみた・オリジナル）。
@@ -1073,6 +1191,133 @@ function articleKey(u) {
   } catch (e) { return ''; }
 }
 
+/* ライブ（公演）。ショウケースの「ライブ」「ライブ詳細」と、Dytica のシートの同じ形のタブを読む。
+   同じ ID の公演が両方にあるときは、ショウケースのほうを使う（ショウが出ている公演はショウケースが正）。
+   載せるもの：公演の基本（名前・日付・会場・時刻・形態・アーカイブ・公式サイト・出演）／セットリスト／関連動画／ライブレポート・特集記事／リリース
+   ⚠️ 載せないもの：写真・キービジュアル（X や販売ページの画像を直接読み込むことになるため。ディスコグラフィのジャケットと同じ）、
+      ポスト（X のポストは載せないと決めた。1章）、グッズ（価格・在庫は載せないと決めた）
+   ⚠️ 読めなくても止めず、前回の公開のものを使う（ディスコグラフィと同じ） */
+async function buildLives(previous) {
+  const sc = { ev: await readSheetSoft('showcaseLive'), de: await readSheetSoft('showcaseLiveDetail') };
+  const dy = { ev: await readSheetSoft('dyticaLive'), de: await readSheetSoft('dyticaLiveDetail') };
+  if (!SOURCES.dyticaLive.gid && !FROM) note('Dytica のシートの「ライブ」「ライブ詳細」タブは、まだ読んでいません（タブを作ったら export/build.js に gid を入れる）');
+  if (!sc.ev && !dy.ev) return (previous && previous.lives) || [];
+  const byId = {};
+  const order = [];
+  [['showcaseLive', 'showcaseLiveDetail', sc], ['dyticaLive', 'dyticaLiveDetail', dy]].forEach(([evKey, deKey, rows]) => {
+    if (!rows.ev) return;
+    const events = parseLiveEvents(rows.ev, evKey);
+    const fresh = events.filter(e => {
+      if (!byId[e.id]) return true;
+      note(SOURCES[evKey].label + ' の「' + e.id + '」は、ショウケースのシートにもあるので、ショウケースのほうを使いました');
+      return false;
+    });
+    fresh.forEach(e => { byId[e.id] = e; order.push(e.id); });
+    if (rows.de) parseLiveDetails(rows.de, deKey, new Map(fresh.map(e => [e.id, e])), new Set(events.map(e => e.id)));
+  });
+  return order.map(id => byId[id]).sort((a, b) => b.d.localeCompare(a.d) || a.t.localeCompare(b.t));
+}
+
+/* 「ライブ」の1行 → 公演。見出しはショウケースに合わせた（ぴったり同じ文字で探す）。
+   ⚠️ 見出しが無いときも止めない（その表だけ読まずに知らせる） */
+function parseLiveEvents(rows, key) {
+  const label = SOURCES[key].label;
+  const header = rows[0].map(h => String(h).trim());
+  const need = ['ID', 'イベント名', '日付', '出演'];
+  const missing = need.filter(h => header.indexOf(h) === -1);
+  if (missing.length) { warn(label + ' に見出しが見つかりません：' + missing.join('、') + '。この表は読んでいません'); return []; }
+  const col = h => header.indexOf(h);
+  const out = [];
+  const seen = new Set();
+  for (let i = 1; i < rows.length; i++) {
+    const r = rows[i];
+    const get = h => (col(h) < 0 ? '' : String(r[col(h)] == null ? '' : r[col(h)]).trim());
+    const name = get('イベント名');
+    if (!name) continue;
+    const rowNo = i + 1;
+    const id = get('ID');
+    if (!/^[A-Za-z0-9_-]+$/.test(id)) { rowIssue(key, rowNo, 'ID「' + id + '」は、半角の英数字と - _ で入れてください（URL に使うため）。この行は載せていません'); continue; }
+    if (seen.has(id)) { rowIssue(key, rowNo, 'ID「' + id + '」が上の行と同じです。この行は載せていません'); continue; }
+    const date = normDate(get('日付'));
+    if (!date) { rowIssue(key, rowNo, '日付「' + get('日付') + '」が読めません（2026/10/10 の形で、文字として入れてください）。この行は載せていません'); continue; }
+    seen.add(id);
+    const cast = splitList(get('出演'));
+    const ev = { id, t: name, d: date, m: sortMembers(Array.from(new Set(cast.map(n => KEY_BY_NAME[nameKey(n)]).filter(Boolean)))) };
+    // 8人以外の出演者の名前。公演の出演は公式の発表どおりなので、名前も載せる（動画のコラボ相手とは違う。決めたこと.md の0章）
+    const others = cast.filter(n => !KEY_BY_NAME[nameKey(n)]);
+    if (others.length) ev.o = others;
+    if (!ev.m.length) rowIssue(key, rowNo, '出演に8人のだれも見つかりません（フルネームで入れてください）');
+    ['会場:pl', '開始時刻:tm', '形態:f'].forEach(x => { const [h, f] = x.split(':'); if (get(h)) ev[f] = get(h); });
+    const arch = get('アーカイブURL');
+    const av = videoId(arch.replace(/^(?=(www\.)?youtu)/, 'https://'));
+    if (av) { ev.a = av; const at = timeParam(arch); if (at) ev.at = at; }
+    const official = get('公式URL');
+    if (/^https?:\/\//.test(official)) ev.u = official;
+    out.push(ev);
+  }
+  return out;
+}
+
+/* 「ライブ詳細」の1行 → 公演の項目。種別ごとに分ける。並びはシートの行の順のまま（曲順）。
+   セットリストの表示名は「1.曲名」「24-1.曲名」（メドレーは枝番）。番号はシートの書き方のまま使う（ショウケースと同じ）。
+   補足（歌った人）は、8人は key、ユニット名（MECHATU-A・Oriens・Dytica）はそのまま、ほかの人は名前のまま入れる。
+   m は歌った8人（ユニット名は中の人に広げる。メンバーを選んだときに印を付けるため）
+   ⚠️ 写真・ポスト・グッズは読まない（buildLives の説明） */
+function parseLiveDetails(rows, key, events, allIds) {
+  const label = SOURCES[key].label;
+  const header = rows[0].map(h => String(h).trim());
+  const need = ['イベントID', '種別', '表示名', 'URL', '補足'];
+  const missing = need.filter(h => header.indexOf(h) === -1);
+  if (missing.length) { warn(label + ' に見出しが見つかりません：' + missing.join('、') + '。この表は読んでいません'); return; }
+  const col = h => header.indexOf(h);
+  const unitByName = {};
+  UNITS.forEach(u => { unitByName[nameKey(u.name)] = u; });
+  unitByName[nameKey('MECHATU-A')] = { name: 'MECHATU-A', members: MEMBERS.map(m => m.key) };
+  for (let i = 1; i < rows.length; i++) {
+    const r = rows[i];
+    const get = h => (col(h) < 0 ? '' : String(r[col(h)] == null ? '' : r[col(h)]).trim());
+    const id = get('イベントID'), kind = get('種別');
+    if (!id || !kind) continue;
+    const rowNo = i + 1;
+    if (!allIds.has(id)) { rowIssue(key, rowNo, 'イベントID「' + id + '」が「ライブ」のタブにありません。この行は載せていません'); continue; }
+    const ev = events.get(id);
+    if (!ev) continue;   // ショウケースのほうを使った公演
+    const name = get('表示名'), url = get('URL');
+    const vid = videoId(url.replace(/^(?=(www\.)?youtu)/, 'https://'));
+    if (kind === 'セットリスト') {
+      const m = name.match(/^\s*(\d+(?:[-‐－]\d+)?)\s*[.、．)]\s*(.*)$/);
+      const song = { n: m ? m[1].replace(/[‐－]/g, '-') : '', t: (m ? m[2] : name).trim(), s: [], m: [] };
+      if (!song.t) continue;
+      splitList(get('補足')).forEach(n => {
+        const k = KEY_BY_NAME[nameKey(n)], u = unitByName[nameKey(n)];
+        song.s.push(k || (u ? u.name : n));
+        (k ? [k] : u ? u.members : []).forEach(x => { if (song.m.indexOf(x) === -1) song.m.push(x); });
+      });
+      song.m = sortMembers(song.m);
+      if (vid) { song.v = vid; const at = timeParam(url); if (at) song.at = at; }
+      (ev.sl = ev.sl || []).push(song);
+    } else if (kind === '関連動画') {
+      if (!vid) { rowIssue(key, rowNo, '関連動画の URL が YouTube の動画として読めません。この行は載せていません'); continue; }
+      (ev.vids = ev.vids || []).push({ t: name, v: vid });
+    } else if (kind === 'ライブレポート' || kind === '特集記事') {
+      if (!/^https?:\/\//.test(url)) { rowIssue(key, rowNo, kind + 'の URL が読めません。この行は載せていません'); continue; }
+      (ev.links = ev.links || []).push({ g: kind, t: name, u: url });
+    } else if (kind === 'リリース') {
+      if (!/^https?:\/\//.test(url)) continue;
+      (ev.rel = ev.rel || []).push({ t: name, u: url });
+    }
+  }
+}
+
+// YouTube の URL の t=（何秒から）。「t=1918」「t=1918s」「t=1h2m3s」を秒にする。無ければ 0
+function timeParam(url) {
+  const m = String(url || '').match(/[?&#]t=([0-9hms]+)/);
+  if (!m) return 0;
+  if (/^\d+s?$/.test(m[1])) return parseInt(m[1], 10);
+  const p = m[1].match(/^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?$/);
+  return p ? (+p[1] || 0) * 3600 + (+p[2] || 0) * 60 + (+p[3] || 0) : 0;
+}
+
 // 販売ページの URL を比べるときの形（?lang=ja や末尾の / の違いを同じにする）
 function normUrl(u) {
   const m = String(u || '').trim().match(/^https?:\/\/([^\/?#]+)([^?#]*)/i);
@@ -1139,6 +1384,8 @@ function finish(data) {
   write('songs.json', data.songs);
   write('discography.json', data.discography);
   write('articles.json', data.articles);
+  write('lives.json', data.lives);
+  write('stats.json', data.stats);
   write('cache/hosts.json', fillGuestHosts.cache || {});
   write('cache/holodex-sho.json', fillShoStarts.cache || { fullAt: '', items: {} });
   write('cache/gone.json', dropGoneVideos.cache || { fullAt: '', ids: {} });
@@ -1192,7 +1439,7 @@ function buildCombos(vids, songs) {
       if (!v.p) { mains.push(v); return; }
       if (used[v.p]) return;
       used[v.p] = true;
-      const g = groups[v.p].slice().sort((a, b) => hostRank(a) - hostRank(b));
+      const g = groups[v.p].slice().sort((a, b) => hostRank(a) - hostRank(b) || (b.l || 0) - (a.l || 0));
       mains.push(keys.map(k => g.find(x => x.h === k)).find(Boolean) || g[0]);
     });
     const byYear = {};
